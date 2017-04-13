@@ -1,0 +1,15 @@
+data_collector: ttgd_collector
+source:
+  type: phonelab
+  sources: ["/phonelab/mobicom17-alarms/test-device/c75766c9053b44819717635c344535fc646e9800/info.json"]
+processors:
+  - name: ttgd_processor
+    has_logstream: true
+    filters:
+      - type: simple
+        filter: "thermal_temp:"
+    parsers:
+      - "Kernel-Trace"
+
+sink:
+  name: ttgd_processor
