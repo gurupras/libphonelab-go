@@ -3,8 +3,6 @@ package libphonelab
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,90 +13,77 @@ import (
 	"github.com/gurupras/phonelab-go/hdfs"
 )
 
-type MissingLoglinesProcGenerator struct{}
+type TTGDProcGenerator struct{}
 
-func (t *MissingLoglinesProcGenerator) GenerateProcessor(source *phonelab.PipelineSourceInstance,
+func (t *TTGDProcGenerator) GenerateProcessor(source *phonelab.PipelineSourceInstance,
 	kwargs map[string]interface{}) phonelab.Processor {
-	return &MissingLoglinesProcessor{
+	return &TTGDProcessor{
 		Source: source.Processor,
 		Info:   source.Info,
 	}
 }
 
-type MissingLoglinesProcessor struct {
+type TTGDProcessor struct {
 	Source phonelab.Processor
 	Info   phonelab.PipelineSourceInfo
 }
 
-type MissingChunk struct {
-	Start int64 `json:"start"`
-	End   int64 `json:"end"`
-}
-type MissingLoglinesResult struct {
-	BasePath string `json:"base_path"`
-	DeviceId string `json:"deviceid"`
-	BootId   string `json:"bootid"`
-	Start    int64  `json:"start"`
-	End      int64  `json:"end"`
+type TTGDResult struct {
+	BasePath string
+	DeviceId string
+	BootId   string
 	hdfsAddr string
-	Missing  []*MissingChunk `json:"missing"`
+	Diffs    []float64
+	Lines    []string
 }
 
-func (p *MissingLoglinesProcessor) Process() <-chan interface{} {
+func (p *TTGDProcessor) Process() <-chan interface{} {
 	outChan := make(chan interface{})
+	lastTimestamp := float64(0)
 
-	result := &MissingLoglinesResult{}
+	result := &TTGDResult{}
 	result.DeviceId = p.Info["deviceid"].(string)
 	result.BootId = p.Info["bootid"].(string)
 	result.BasePath = p.Info["basePath"].(string)
 	result.hdfsAddr = p.Info["hdfsAddr"].(string)
-	result.Missing = make([]*MissingChunk, 0)
-
+	result.Diffs = make([]float64, 0)
+	result.Lines = make([]string, 0)
 	go func() {
 		defer close(outChan)
 		inChan := p.Source.Process()
-		var (
-			last    int64
-			current int64
-		)
 		for obj := range inChan {
 			ll, ok := obj.(*phonelab.Logline)
 			if !ok {
 				continue
 			}
-			if last == 0 {
-				result.Start = ll.LogcatToken
-				last = ll.LogcatToken
-				continue
-			}
-			current = ll.LogcatToken
-
-			if current > last+1 {
-				missing := &MissingChunk{
-					last,
-					current,
+			switch t := ll.Payload.(type) {
+			case *phonelab.ThermalTemp:
+				if lastTimestamp != 0 {
+					diff := t.Timestamp - lastTimestamp
+					result.Diffs = append(result.Diffs, diff)
+					if diff > 10 {
+						result.Lines = append(result.Lines, ll.Line)
+					}
 				}
-				result.Missing = append(result.Missing, missing)
+				lastTimestamp = t.Timestamp
 			}
-			last = current
 		}
-		result.End = last
 		outChan <- result
 	}()
 	return outChan
 }
 
-type MissingLoglinesCollector struct {
+type TTGDCollector struct {
 	sync.Mutex
-	Data     []*MissingLoglinesResult
+	data     []*TTGDResult
 	DeviceId string
 	BootId   string
 	BasePath string
 	hdfsAddr string
 }
 
-func (c *MissingLoglinesCollector) OnData(data interface{}) {
-	r := data.(*MissingLoglinesResult)
+func (c *TTGDCollector) OnData(data interface{}) {
+	r := data.(*TTGDResult)
 	c.Lock()
 	defer c.Unlock()
 	if strings.Compare(c.DeviceId, "") == 0 {
@@ -107,10 +92,10 @@ func (c *MissingLoglinesCollector) OnData(data interface{}) {
 		c.BasePath = r.BasePath
 		c.hdfsAddr = r.hdfsAddr
 	}
-	c.Data = append(c.Data, r)
+	c.data = append(c.data, r)
 }
 
-func (c *MissingLoglinesCollector) Finish() {
+func (c *TTGDCollector) Finish() {
 	deviceId := c.DeviceId
 	basePath := c.BasePath
 	outdir := filepath.Join(basePath, deviceId, "analysis")
@@ -130,12 +115,12 @@ func (c *MissingLoglinesCollector) Finish() {
 		panic(fmt.Sprintf("Failed to makedir: %v", outdir))
 	}
 
-	b, err := json.Marshal(&c.Data)
+	b, err := json.Marshal(&c.data)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to marshal final results: %v", err))
 	}
-	fpath := filepath.Join(outdir, "missing_loglines.gz")
-	file, err := hdfs.OpenFile(fpath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, easyfiles.GZ_TRUE, client)
+	fpath := filepath.Join(outdir, "thermal_temp_gap_distribution.gz")
+	file, err := hdfs.OpenFile(fpath, os.O_CREATE|os.O_WRONLY, easyfiles.GZ_TRUE, client)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to open file: %v", fpath))
 	}
@@ -147,16 +132,17 @@ func (c *MissingLoglinesCollector) Finish() {
 	writer.Write(b)
 }
 
-func MissingLoglinesMain() {
-	log.SetOutput(ioutil.Discard)
+func TTGDMain() {
 	env := phonelab.NewEnvironment()
-
-	env.DataCollectors["missing_loglines_collector"] = func() phonelab.DataCollector {
-		c := &MissingLoglinesCollector{}
-		c.Data = make([]*MissingLoglinesResult, 0)
+	env.Parsers["Kernel-Trace"] = func() phonelab.Parser {
+		return phonelab.NewKernelTraceParser()
+	}
+	env.DataCollectors["ttgd_collector"] = func() phonelab.DataCollector {
+		c := &TTGDCollector{}
+		c.data = make([]*TTGDResult, 0)
 		return c
 	}
-	env.Processors["missing_loglines_processor"] = &MissingLoglinesProcGenerator{}
+	env.Processors["ttgd_processor"] = &TTGDProcGenerator{}
 
 	conf, err := phonelab.RunnerConfFromFile(os.Args[1])
 	if err != nil {

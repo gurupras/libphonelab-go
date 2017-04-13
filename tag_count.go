@@ -12,8 +12,8 @@ import (
 	"sync"
 
 	"github.com/gurupras/go-easyfiles"
-	"github.com/gurupras/go-easyfiles/easyhdfs"
 	"github.com/gurupras/phonelab-go"
+	"github.com/gurupras/phonelab-go/hdfs"
 )
 
 type TagCountProcGenerator struct{}
@@ -102,7 +102,7 @@ func (c *TagCountCollector) Finish() {
 
 	outdir := filepath.Join(basePath, deviceId, "analysis")
 
-	client, err := NewHdfsClient(c.hdfsAddr)
+	client, err := hdfs.NewHdfsClient(c.hdfsAddr)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to get hdfs client: %v", err))
 	}
@@ -123,16 +123,7 @@ func (c *TagCountCollector) Finish() {
 	}
 	fpath := filepath.Join(outdir, "tag_count.gz")
 
-	var file *easyfiles.File
-	if client != nil {
-		f, err = client.Open(fpath)
-		if err == nil {
-			hdfsFile = &easyhdfs.HdfsFile{fpath, f, nil, client}
-			file = &easyfiles.File{fpath, hdfsFile, 0, easyfiles.GZ_TRUE}
-		}
-	} else {
-		file, err = easyfiles.Open(fpath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, easyfiles.GZ_TRUE)
-	}
+	file, err := hdfs.OpenFile(fpath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, easyfiles.GZ_TRUE, client)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to open file: %v", fpath))
 	}

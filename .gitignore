@@ -1,4 +1,6 @@
 .*.sw*
+*.prof
+
 /tag_count/tag_count
 /missing_loglines/missing_loglines
 /thermal_temp_gap_distribution/thermal_temp_gap_distribution
