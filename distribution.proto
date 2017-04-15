@@ -1,0 +1,17 @@
+//syntax = "proto3";
+package libphonelab;
+
+message DistributionMsg {
+	required string DeviceId = 1;
+	required string BootId = 2;
+	repeated int32 Temps = 3;
+	repeated int64 Timestamps = 4;
+	required int64 Period = 5;
+	required bool IsFull = 6;
+	required int64 NumEntries = 7;
+}
+
+message DistributionComparison {
+	required DistributionMsg dist1 = 1;
+	required DistributionMsg dist2 = 2;
+}

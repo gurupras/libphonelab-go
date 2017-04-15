@@ -1,7 +1,9 @@
 data_collector: tag_count_collector
 source:
   type: phonelab
-  sources: ["/phonelab/mobicom17-alarms/data/84fd059afbcdff5029f8fc710580dd5d8a650346/info.json"]
+  hdfsAddr: dirtydeeds.cse.buffalo.edu:9000
+  #sources: ["/phonelab/mobicom17-alarms/data/84fd059afbcdff5029f8fc710580dd5d8a650346/info.json"]
+  sources: ["/**/info.json"]
 processors:
   - name: tag_count_processor
     has_logstream: true

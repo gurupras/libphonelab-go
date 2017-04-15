@@ -11,8 +11,8 @@ import (
 	"sync"
 
 	"github.com/gurupras/go-easyfiles"
-	"github.com/gurupras/phonelab-go"
-	"github.com/gurupras/phonelab-go/hdfs"
+	"github.com/shaseley/phonelab-go"
+	"github.com/shaseley/phonelab-go/hdfs"
 )
 
 type MissingLoglinesProcGenerator struct{}

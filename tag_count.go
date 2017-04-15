@@ -3,17 +3,14 @@ package libphonelab
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
-	"runtime/pprof"
 	"strings"
 	"sync"
 
 	"github.com/gurupras/go-easyfiles"
-	"github.com/gurupras/phonelab-go"
-	"github.com/gurupras/phonelab-go/hdfs"
+	"github.com/shaseley/phonelab-go"
+	"github.com/shaseley/phonelab-go/hdfs"
 )
 
 type TagCountProcGenerator struct{}
@@ -136,24 +133,8 @@ func (c *TagCountCollector) Finish() {
 }
 
 func TagCountMain() {
-	f, _ := os.Create("cpuprofile.prof")
-	pprof.StartCPUProfile(f)
-	defer pprof.StopCPUProfile()
-
-	log.SetOutput(ioutil.Discard)
 	env := phonelab.NewEnvironment()
-	env.Parsers["Kernel-Trace"] = func() phonelab.Parser {
-		p := phonelab.NewKernelTraceParser()
-		p.ErrOnUnknownTag = false
-		return p
-	}
-	env.DataCollectors["tag_count_collector"] = func() phonelab.DataCollector {
-		c := &TagCountCollector{}
-		c.tagMap = make(map[string]int64)
-		return c
-	}
-	env.Processors["tag_count_processor"] = &TagCountProcGenerator{}
-
+	InitEnv(env)
 	conf, err := phonelab.RunnerConfFromFile(os.Args[1])
 	if err != nil {
 		panic(err)
