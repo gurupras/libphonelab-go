@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/gurupras/go-easyfiles"
@@ -29,21 +28,15 @@ type TagCountProcessor struct {
 }
 
 type TagCountResult struct {
-	BasePath string
-	DeviceId string
-	BootId   string
-	hdfsAddr string
-	TagMap   map[string]int64
+	*phonelab.PhonelabSourceInfo
+	TagMap map[string]int64
 }
 
 func (p *TagCountProcessor) Process() <-chan interface{} {
 	outChan := make(chan interface{})
 
 	result := &TagCountResult{}
-	result.DeviceId = p.Info["deviceid"].(string)
-	result.BootId = p.Info["bootid"].(string)
-	result.BasePath = p.Info["basePath"].(string)
-	result.hdfsAddr = p.Info["hdfsAddr"].(string)
+	result.PhonelabSourceInfo = p.Info["source_info"].(*phonelab.PhonelabSourceInfo)
 	result.TagMap = make(map[string]int64)
 
 	go func() {
@@ -70,24 +63,17 @@ func (p *TagCountProcessor) Process() <-chan interface{} {
 
 type TagCountCollector struct {
 	sync.Mutex
-	tagMap   map[string]int64
-	DeviceId string
-	BootId   string
-	BasePath string
-	hdfsAddr string
+	tagMap map[string]int64
+	*phonelab.PhonelabSourceInfo
 }
 
 func (c *TagCountCollector) OnData(data interface{}) {
 	r := data.(*TagCountResult)
 	c.Lock()
 	defer c.Unlock()
-	if strings.Compare(c.DeviceId, "") == 0 {
-		c.DeviceId = r.DeviceId
-		c.BootId = r.BootId
-		c.BasePath = r.BasePath
-		c.hdfsAddr = r.hdfsAddr
+	if c.PhonelabSourceInfo == nil {
+		c.PhonelabSourceInfo = r.PhonelabSourceInfo
 	}
-
 	for k, v := range r.TagMap {
 		c.tagMap[k] += v
 	}
@@ -95,11 +81,11 @@ func (c *TagCountCollector) OnData(data interface{}) {
 
 func (c *TagCountCollector) Finish() {
 	deviceId := c.DeviceId
-	basePath := c.BasePath
+	basePath := c.Path
 
 	outdir := filepath.Join(basePath, deviceId, "analysis")
 
-	client, err := hdfs.NewHdfsClient(c.hdfsAddr)
+	client, err := hdfs.NewHdfsClient(c.HdfsAddr)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to get hdfs client: %v", err))
 	}
