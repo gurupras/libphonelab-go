@@ -1,10 +1,19 @@
-data_collector: tag_count_collector
+data_collector:
+  name: "default"
+  args:
+    path: "/phonelab/mobicom17-alarms/test"
+    #path: hdfs://path_to_hdfs or
+    #path http[s]://base/url
+    aggregate: false
+    compress: true
+    #hdfs_addr: <hdfd addr>
+
 source:
   type: phonelab
-  #sources: ["/phonelab/mobicom17-alarms/data/84fd059afbcdff5029f8fc710580dd5d8a650346/info.json"]
-  sources: ["/cb63cb9bb9ad1ea9fcfab53403820c7c084621ab/info.json"]
-  args:
-    hdfs_addr: dirtydeeds.cse.buffalo.edu:9000
+  sources: ["/phonelab/mobicom17-alarms/data/ac23ab520925fca80ab4b451eb1451f3c0973f47/info.json"]
+  #sources: ["/cb63cb9bb9ad1ea9fcfab53403820c7c084621ab/info.json"]
+  #args:
+  #  hdfs_addr: dirtydeeds.cse.buffalo.edu:9000
 processors:
   - name: tag_count_processor
     has_logstream: true
