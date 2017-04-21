@@ -18,44 +18,44 @@ type Batch struct {
 }
 
 type Alarm struct {
-	What           string
-	Type           int
-	OrigWhen       int64
-	Wakeup         bool
-	Tag            string
-	Flags          int
-	Uid            int
-	Count          int
-	When           int64
-	WindowLength   int64
-	WhenElapsed    int64
-	MaxWhenElapsed int64 `json:maxWhenElapsed`
-	RepeatInterval int64
-	Pid            int
-	Operation      string
-	CreatorPkg     string `json:omitempty`
-	TargetPkg      string `json:omitempty`
-	Uuid           string
-	WhenRtc        int64
-	MaxWhenRtc     int64
-	AppPid         int `json:omitempty`
+	What           string `json:"what"`
+	Type           int    `json:"type"`
+	OrigWhen       int64  `json:"origWhen"`
+	Wakeup         bool   `json:"wakeup"`
+	Tag            string `json:"tag"`
+	Flags          int    `json:"flags"`
+	Uid            int    `json:"uid"`
+	Count          int    `json:"count"`
+	When           int64  `json:"when"`
+	WindowLength   int64  `json:"windowLength"`
+	WhenElapsed    int64  `json:"whenElapsed"`
+	MaxWhenElapsed int64  `json:"maxWhenElapsed"`
+	RepeatInterval int64  `json:"repeatinterval"`
+	Pid            int    `json:"pid"`
+	Operation      string `json:"operation"`
+	CreatorPkg     string `json:"creatorpkg,omitempty"`
+	TargetPkg      string `json:"targetpkg,omitempty"`
+	Uuid           string `json:"uuid"`
+	WhenRtc        int64  `json:"whenRtc"`
+	MaxWhenRtc     int64  `json:"maxWhenRtc"`
+	AppPid         int    `json:"apppid,omitempty"`
 }
 
 type SetAlarm struct {
-	Func          string `json:func`
-	Pid           int    `json:pid`
-	Uid           int    `json:uid`
-	FlagsBinary   string `json:flagsBinary`
-	Flags         int    `json:flags`
-	AlarmClock    string `json:alarmClock,omitempty`
-	Type          int    `json:type`
-	TriggerAtTime int64  `json:triggerAtTime`
-	NowElapsed    int64  `json:nowELAPSED`
-	Rtc           int64  `json:rtc`
-	WindowLength  int64  `json:windowLength`
-	Interval      int64  `json:interval`
-	CreatorPkg    string `json:creatorPkg,omitempty`
-	TargetPkg     string `json:targetPkg,omitempty`
+	Func          string `json:"func"`
+	Pid           int    `json:"pid"`
+	Uid           int    `json:"uid"`
+	FlagsBinary   string `json:"flagsBinary"`
+	Flags         int    `json:"flags"`
+	AlarmClock    string `json:"alarmClock,omitempty"`
+	Type          int    `json:"type"`
+	TriggerAtTime int64  `json:"triggerAtTime"`
+	NowElapsed    int64  `json:"nowELAPSED"`
+	Rtc           int64  `json:"rtc"`
+	WindowLength  int64  `json:"windowLength"`
+	Interval      int64  `json:"interval"`
+	CreatorPkg    string `json:"creatorPkg,omitempty"`
+	TargetPkg     string `json:"targetPkg,omitempty"`
 }
 
 func (sa *SetAlarm) Equals(alarm *Alarm) bool {
@@ -72,16 +72,13 @@ func (sa *SetAlarm) Equals(alarm *Alarm) bool {
 }
 
 type DeliverAlarmsLocked struct {
-	Logline     *phonelab.Logline
-	Alarm       `json:alarm`
-	NowElapsed  int64  `json:nowELAPSED`
-	Rtc         int64  `json:rtc`
-	Func        string `json:func`
-	WhenRtc     int64
-	MaxWhenRtc  int64
-	Temps       []int32
-	Timestamps  []int64
-	TriggerTemp int32
+	Logline    *phonelab.Logline
+	Alarm      `json:"alarm"`
+	NowElapsed int64  `json:"nowELAPSED"`
+	Rtc        int64  `json:"rtc"`
+	Func       string `json:"func"`
+	WhenRtc    int64  `json:"whenRtc"`
+	MaxWhenRtc int64  `json:"maxWhenRtc"`
 }
 
 func ParseAlarm(jsonString string) (alarm *Alarm, err error) {
@@ -118,9 +115,6 @@ func ParseDeliverAlarmsLocked(logline *phonelab.Logline) (deliverAlarm *DeliverA
 	deliverAlarm.Alarm = *alarm
 	deliverAlarm.NowElapsed = int64(data["nowELAPSED"].(float64))
 	deliverAlarm.Rtc = int64(data["rtc"].(float64))
-	deliverAlarm.Temps = make([]int32, 0)
-	deliverAlarm.Timestamps = make([]int64, 0)
-
 	// Now fill in custom fields
 	rtcFixup := int64(5 * 3600 * 1000)
 
