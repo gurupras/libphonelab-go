@@ -1,0 +1,17 @@
+data_collector: alarm_temp_collector
+source:
+  type: phonelab
+  sources: ["/phonelab/mobicom17-alarms/data/cb63cb9bb9ad1ea9fcfab53403820c7c084621ab/info.json"]
+processors:
+  - name: alarm_temp_processor
+    has_logstream: true
+    filters:
+      - type: simple
+        filter: "thermal_temp:"
+      - type: simple
+        filter: "deliverAlarmsLocked"
+    parsers:
+      - "Kernel-Trace"
+
+sink:
+  name: alarm_temp_processor
