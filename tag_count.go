@@ -1,15 +1,10 @@
 package libphonelab
 
 import (
-	"encoding/json"
-	"fmt"
 	"os"
-	"path/filepath"
 	"sync"
 
-	"github.com/gurupras/go-easyfiles"
 	"github.com/shaseley/phonelab-go"
-	"github.com/shaseley/phonelab-go/hdfs"
 )
 
 type TagCountProcGenerator struct{}
@@ -28,7 +23,6 @@ type TagCountProcessor struct {
 }
 
 type TagCountResult struct {
-	*phonelab.PhonelabSourceInfo
 	TagMap map[string]int64
 }
 
@@ -36,7 +30,6 @@ func (p *TagCountProcessor) Process() <-chan interface{} {
 	outChan := make(chan interface{})
 
 	result := &TagCountResult{}
-	result.PhonelabSourceInfo = p.Info["source_info"].(*phonelab.PhonelabSourceInfo)
 	result.TagMap = make(map[string]int64)
 
 	go func() {
@@ -64,58 +57,62 @@ func (p *TagCountProcessor) Process() <-chan interface{} {
 type TagCountCollector struct {
 	sync.Mutex
 	tagMap map[string]int64
-	*phonelab.PhonelabSourceInfo
+	phonelab.PipelineSourceInfo
 }
 
 func (c *TagCountCollector) OnData(data interface{}) {
-	r := data.(*TagCountResult)
-	c.Lock()
-	defer c.Unlock()
-	if c.PhonelabSourceInfo == nil {
-		c.PhonelabSourceInfo = r.PhonelabSourceInfo
-	}
-	for k, v := range r.TagMap {
-		c.tagMap[k] += v
-	}
+	/*
+		r := data.(*TagCountResult)
+		c.Lock()
+		defer c.Unlock()
+		if c.PhonelabSourceInfo == nil {
+			c.PhonelabSourceInfo = r.PhonelabSourceInfo
+		}
+		for k, v := range r.TagMap {
+			c.tagMap[k] += v
+		}
+	*/
 }
 
 func (c *TagCountCollector) Finish() {
-	deviceId := c.DeviceId
-	basePath := c.Path
+	/*
+		deviceId := c.DeviceId
+		basePath := c.Path
 
-	outdir := filepath.Join(basePath, deviceId, "analysis")
+		outdir := filepath.Join(basePath, deviceId, "analysis")
 
-	client, err := hdfs.NewHdfsClient(c.HdfsAddr)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to get hdfs client: %v", err))
-	}
-	if client != nil {
-		err = client.MkdirAll(outdir, 0775)
-	} else {
-		if !easyfiles.Exists(outdir) {
-			err = easyfiles.Makedirs(outdir)
+		client, err := hdfs.NewHdfsClient(c.HdfsAddr)
+		if err != nil {
+			panic(fmt.Sprintf("Failed to get hdfs client: %v", err))
 		}
-	}
-	if err != nil {
-		panic(fmt.Sprintf("Failed to makedir: %v", outdir))
-	}
+		if client != nil {
+			err = client.MkdirAll(outdir, 0775)
+		} else {
+			if !easyfiles.Exists(outdir) {
+				err = easyfiles.Makedirs(outdir)
+			}
+		}
+		if err != nil {
+			panic(fmt.Sprintf("Failed to makedir: %v", outdir))
+		}
 
-	b, err := json.Marshal(&c.tagMap)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to marshal final results: %v", err))
-	}
-	fpath := filepath.Join(outdir, "tag_count.gz")
+		b, err := json.Marshal(&c.tagMap)
+		if err != nil {
+			panic(fmt.Sprintf("Failed to marshal final results: %v", err))
+		}
+		fpath := filepath.Join(outdir, "tag_count.gz")
 
-	file, err := hdfs.OpenFile(fpath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, easyfiles.GZ_TRUE, client)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to open file: %v", fpath))
-	}
-	defer file.Close()
-	writer, _ := file.Writer(0)
-	defer writer.Close()
-	defer writer.Flush()
+		file, err := hdfs.OpenFile(fpath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, easyfiles.GZ_TRUE, client)
+		if err != nil {
+			panic(fmt.Sprintf("Failed to open file: %v", fpath))
+		}
+		defer file.Close()
+		writer, _ := file.Writer(0)
+		defer writer.Close()
+		defer writer.Flush()
 
-	writer.Write(b)
+		writer.Write(b)
+	*/
 }
 
 func TagCountMain() {
