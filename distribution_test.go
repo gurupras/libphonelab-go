@@ -11,6 +11,7 @@ import (
 	"github.com/gurupras/go_cpuprof/post_processing/filters"
 	"github.com/gurupras/libphonelab-go/alarms"
 	"github.com/pbnjay/strptime"
+	"github.com/shaseley/phonelab-go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -197,9 +198,12 @@ func TestFailedSearch(t *testing.T) {
 	_, closest = distribution.FindIdxByTimestampBinarySearch(failedTime.UnixNano())
 	require.Equal(expectedTimestamp, closest)
 
+	parser := phonelab.NewLogcatParser()
+
 	// Now try to find one near WhenRtc
 	line := `84fd059afbcdff5029f8fc710580dd5d8a650346        1488392701901   1488392701901.1 e90bd6dd-175b-4abd-8fe9-a173f44f7b7f    60060605        540820.803313   2017-03-01 18:25:01.901465      884     1335    D   ThermaPlan->AlarmManagerService  {"func":"AlarmManagerService->deliverAlarmsLocked()","nowELAPSED":794808994,"rtc":1488410701916,"alarm":"{\"what\":\"ALARM\",\"type\":2,\"origWhen\":794797015,\"wakeup\":true,\"tag\":\"*walarm*:com.google.android.location.ALARM_WAKEUP_LOCATOR\",\"flags\":0,\"uid\":10014,\"count\":1,\"when\":794797015,\"windowLength\":37500,\"whenElapsed\":794797015,\"maxWhenElapsed\":794834515,\"repeatInterval\":0,\"pid\":1866,\"operation\":\"PendingIntent{95b20d6: PendingIntentRecord{69cd47c com.google.android.gms broadcastIntent}}\",\"uuid\":\"1408f6b8-a047-4f5c-9b1d-1aff7dc10988\",\"whenRtc\":1488410689938,\"maxWhenRtc\":1488410727438,\"creatorPkg\":\"com.google.android.gms\",\"targetPkg\":\"com.google.android.gms\",\"appPid\":1866}"}`
-	logline := cpuprof.ParseLogline(line)
+	logline, err := parser.Parse(line)
+	require.Nil(err)
 	require.NotNil(logline)
 	alarm, err := alarms.ParseDeliverAlarmsLocked(logline)
 	require.Nil(err)
