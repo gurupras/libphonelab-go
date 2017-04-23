@@ -11,9 +11,9 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gurupras/go-easyfiles"
-	"github.com/gurupras/go-easyfiles/easyhdfs"
 	"github.com/gurupras/go-external-sort"
 	"github.com/gurupras/gocommons/gsync"
 	"github.com/shaseley/phonelab-go"
@@ -110,17 +110,12 @@ func (p *StitchProcessor) Process() <-chan interface{} {
 	if SortParams.FSInterface == nil {
 		sourceInfo := p.Info.(*phonelab.PhonelabRawInfo)
 		stitchInfo = sourceInfo.StitchInfo
-		// Check if hdfs addr is set
-		if strings.Compare(sourceInfo.HdfsAddr, "") != 0 {
-			SortParams.FSInterface = easyhdfs.NewHDFSFileSystem(sourceInfo.HdfsAddr)
-		} else {
-			SortParams.FSInterface = easyfiles.LocalFS
-		}
+		SortParams.FSInterface = sourceInfo.FSInterface
 	}
 
 	inChan := p.Source.Process()
 
-	sem := gsync.NewSem(32)
+	sem := gsync.NewSem(4)
 	go func() {
 		defer close(outChan)
 		wg := sync.WaitGroup{}
@@ -137,7 +132,7 @@ func (p *StitchProcessor) Process() <-chan interface{} {
 				defer wg.Done()
 				log.Infof("Processing file=%v", file)
 				// Call external sort on this
-				bufsize := 128 * 1048576
+				bufsize := 64 * 1048576
 				chunks, err := extsort.ExternalSort(file, bufsize, SortParams)
 				if err != nil {
 					log.Fatalf("Failed to run external sort on file: %v: %v", file, err)
@@ -190,6 +185,7 @@ func (s *StitchCollector) Finish() {
 	log.Infof("StitchCollector finish()")
 	devicePath := filepath.Join(s.outPath, s.deviceId)
 
+	log.Infof("Calling doNWayMerge")
 	doNWayMerge(devicePath, s.chunks, s.StitchInfo, s.delete, 100000)
 
 	// Update files
@@ -225,6 +221,7 @@ func (s *StitchCollector) Finish() {
 			log.Fatalf("Failed to remove: %v", chunk)
 		}
 	}
+	time.Sleep(30 * time.Second)
 }
 
 func doNWayMerge(devicePath string, chunks []string, info *phonelab.StitchInfo, delete bool, lines_per_file int) {
@@ -235,6 +232,7 @@ func doNWayMerge(devicePath string, chunks []string, info *phonelab.StitchInfo, 
 	bootid_channel_map := make(map[string]chan *SortableLogline)
 
 	callback := func(out_channel chan extsort.SortInterface, sortParams extsort.SortParams, quit chan bool) {
+		linesWritten := uint32(0)
 		boot_id_consumer := func(boot_id string, channel chan *SortableLogline, wg *sync.WaitGroup) {
 			defer wg.Done()
 			var err error
@@ -245,7 +243,7 @@ func doNWayMerge(devicePath string, chunks []string, info *phonelab.StitchInfo, 
 			outdir := filepath.Join(devicePath, boot_id)
 			var cur_filename string
 			var cur_file *easyfiles.File
-			var cur_file_writer easyfiles.Writer
+			var cur_file_writer *easyfiles.Writer
 
 			fs := sortParams.FSInterface
 			// Make directory if it doesn't exist
@@ -283,9 +281,15 @@ func doNWayMerge(devicePath string, chunks []string, info *phonelab.StitchInfo, 
 			var fileInfo *phonelab.StitchFileInfo
 
 			cleanup := func() {
-				cur_file_writer.Flush()
-				cur_file_writer.Close()
-				cur_file.Close()
+				if err = cur_file_writer.Flush(); err != nil {
+					log.Fatalf("Failed writer flush: %v: %v", cur_filename, err)
+				}
+				if err = cur_file_writer.Close(); err != nil {
+					log.Fatalf("Failed writer close: %v: %v", cur_filename, err)
+				}
+				if err = cur_file.Close(); err != nil {
+					log.Fatalf("Failed file close: %v: %v", cur_filename, err)
+				}
 				basename := path.Base(cur_filename)
 				info.BootInfo[boot_id][basename] = fileInfo
 			}
@@ -338,12 +342,15 @@ func doNWayMerge(devicePath string, chunks []string, info *phonelab.StitchInfo, 
 					default:
 						fileInfo.End = logline.Datetime.UnixNano()
 					}
-					cur_line_count++
 					if cur_line_count != lines_per_file {
-						cur_file_writer.Write([]byte(logline.Line + "\n"))
+						_, err = cur_file_writer.Write([]byte(logline.Line + "\n"))
 					} else {
-						cur_file_writer.Write([]byte(logline.Line))
+						_, err = cur_file_writer.Write([]byte(logline.Line))
 					}
+					if err != nil {
+						log.Fatalf("Failed to write to file: %v: %v", cur_filename, err)
+					}
+					cur_line_count++
 				}
 			}
 		}
@@ -372,16 +379,16 @@ func doNWayMerge(devicePath string, chunks []string, info *phonelab.StitchInfo, 
 				}
 
 				// Add it in and create a consumer
-				bootid_channel_map[boot_id] = make(chan *SortableLogline, 1000)
+				bootid_channel_map[boot_id] = make(chan *SortableLogline, 10)
 				wg.Add(1)
 				go boot_id_consumer(boot_id, bootid_channel_map[boot_id], &wg)
-			} else {
-				// Write line to channel
-				bootid_channel_map[boot_id] <- logline
 			}
+			// Write line to channel
+			bootid_channel_map[boot_id] <- logline
+			linesWritten++
 		}
 	done:
-		log.Infof("Cleaning up callback")
+		log.Infof("Cleaning up callback.. Wrote a total of %d lines", linesWritten)
 		// Done reading the file. Now close the channels
 		for boot_id := range bootid_channel_map {
 			close(bootid_channel_map[boot_id])
@@ -392,5 +399,8 @@ func doNWayMerge(devicePath string, chunks []string, info *phonelab.StitchInfo, 
 		log.Infof("Callback: Done")
 	}
 	// Now start the n-way merge generator
-	extsort.NWayMergeGenerator(chunks, SortParams, merge_out_channel, callback)
+	err = extsort.NWayMergeGenerator(chunks, SortParams, merge_out_channel, callback)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
 }
