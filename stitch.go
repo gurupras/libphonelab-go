@@ -132,7 +132,7 @@ func (p *StitchProcessor) Process() <-chan interface{} {
 				defer wg.Done()
 				log.Infof("Processing file=%v", file)
 				// Call external sort on this
-				bufsize := 64 * 1048576
+				bufsize := 128 * 1048576
 				chunks, err := extsort.ExternalSort(file, bufsize, SortParams)
 				if err != nil {
 					log.Fatalf("Failed to run external sort on file: %v: %v", file, err)
