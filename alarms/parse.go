@@ -72,8 +72,8 @@ func (sa *SetAlarm) Equals(alarm *Alarm) bool {
 }
 
 type DeliverAlarmsLocked struct {
-	Logline    *phonelab.Logline
-	Alarm      `json:"alarm"`
+	*Alarm `json:"alarm"`
+	*phonelab.Logline
 	NowElapsed int64  `json:"nowELAPSED"`
 	Rtc        int64  `json:"rtc"`
 	Func       string `json:"func"`
@@ -91,6 +91,48 @@ func ParseAlarm(jsonString string) (alarm *Alarm, err error) {
 		return
 	}
 	return
+}
+
+type DeliverAlarmsLockedParser struct {
+}
+
+func NewDeliverAlarmsLockedParser() *DeliverAlarmsLockedParser {
+	return &DeliverAlarmsLockedParser{}
+}
+
+func (d *DeliverAlarmsLockedParser) Parse(payload string) (interface{}, error) {
+	// This is an alarm trigger logline
+	if !strings.HasPrefix(payload, `{"func":"AlarmManagerService->deliverAlarmsLocked()"`) {
+		return nil, nil
+	}
+
+	var data map[string]interface{}
+	err := json.Unmarshal([]byte(payload), &data)
+	if err != nil {
+		err = errors.New(fmt.Sprintf("Failed to unmarshal: %v", err))
+		return nil, err
+	}
+	_ = data
+	deliverAlarm := &DeliverAlarmsLocked{}
+	deliverAlarm.Func = data["func"].(string)
+	var alarm *Alarm
+	alarm, err = ParseAlarm(data["alarm"].(string))
+	if err != nil {
+		err = errors.New(fmt.Sprintf("Failed to unmarshal alarm: %v", err))
+		return nil, err
+	}
+	deliverAlarm.Alarm = alarm
+	deliverAlarm.NowElapsed = int64(data["nowELAPSED"].(float64))
+	deliverAlarm.Rtc = int64(data["rtc"].(float64))
+	// Now fill in custom fields
+	rtcFixup := int64(5 * 3600 * 1000)
+
+	if deliverAlarm.WhenRtc == 0 {
+		deliverAlarm.WhenRtc = deliverAlarm.Rtc - (deliverAlarm.NowElapsed - deliverAlarm.Alarm.WhenElapsed)
+	}
+	deliverAlarm.WhenRtc -= rtcFixup
+	deliverAlarm.MaxWhenRtc = deliverAlarm.WhenRtc + (deliverAlarm.WindowLength)
+	return deliverAlarm, nil
 }
 
 func ParseDeliverAlarmsLocked(logline *phonelab.Logline) (deliverAlarm *DeliverAlarmsLocked, err error) {
@@ -112,7 +154,7 @@ func ParseDeliverAlarmsLocked(logline *phonelab.Logline) (deliverAlarm *DeliverA
 		deliverAlarm = nil
 		return
 	}
-	deliverAlarm.Alarm = *alarm
+	deliverAlarm.Alarm = alarm
 	deliverAlarm.NowElapsed = int64(data["nowELAPSED"].(float64))
 	deliverAlarm.Rtc = int64(data["rtc"].(float64))
 	// Now fill in custom fields
