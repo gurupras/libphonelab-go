@@ -11,7 +11,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/gurupras/go-easyfiles"
 	"github.com/gurupras/go-external-sort"
@@ -119,6 +118,8 @@ func (p *StitchProcessor) Process() <-chan interface{} {
 	go func() {
 		defer close(outChan)
 		wg := sync.WaitGroup{}
+
+		sentOne := false
 		for obj := range inChan {
 			//file, ok := obj.(string)
 			//if !ok {
@@ -138,7 +139,11 @@ func (p *StitchProcessor) Process() <-chan interface{} {
 					log.Fatalf("Failed to run external sort on file: %v: %v", file, err)
 				}
 				outChan <- &ChunkData{stitchInfo, file, chunks}
+				sentOne = true
 			}(file)
+		}
+		if !sentOne {
+			outChan <- &ChunkData{stitchInfo, "", []string{}}
 		}
 		wg.Wait()
 	}()
@@ -177,15 +182,19 @@ func (s *StitchCollector) OnData(data interface{}, info phonelab.PipelineSourceI
 		s.initialized = true
 	}
 
-	s.chunks = append(s.chunks, chunkData.Chunks...)
-	s.files = append(s.files, chunkData.File)
+	if strings.Compare(chunkData.File, "") != 0 {
+		s.chunks = append(s.chunks, chunkData.Chunks...)
+		s.files = append(s.files, chunkData.File)
+	}
 }
 
 func (s *StitchCollector) Finish() {
 	log.Infof("StitchCollector finish()")
+	//log.Infof("outPath=%v", s.outPath)
 	devicePath := filepath.Join(s.outPath, s.deviceId)
+	//log.Infof("devicePath=%v", devicePath)
 
-	log.Infof("Calling doNWayMerge")
+	log.Debugf("Calling doNWayMerge")
 	doNWayMerge(devicePath, s.chunks, s.StitchInfo, s.delete, 100000)
 
 	// Update files
@@ -201,8 +210,8 @@ func (s *StitchCollector) Finish() {
 	sort.Sort(sort.StringSlice(s.StitchInfo.Files))
 
 	// Write info.json
-	log.Infof("Writing info.json")
 	infoJsonPath := filepath.Join(devicePath, "info.json")
+	log.Infof("Writing info.json: %v", infoJsonPath)
 	b, err := json.MarshalIndent(s.StitchInfo, "", "    ")
 	if err != nil {
 		log.Fatalf("Failed to marshal StitchInfo to write to info.json: %v", err)
@@ -229,7 +238,6 @@ func (s *StitchCollector) Finish() {
 			log.Fatalf("Failed to remove: %v", chunk)
 		}
 	}
-	time.Sleep(30 * time.Second)
 }
 
 func doNWayMerge(devicePath string, chunks []string, info *phonelab.StitchInfo, delete bool, lines_per_file int) {
