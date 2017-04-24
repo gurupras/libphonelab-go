@@ -1,20 +1,22 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"os"
 	"runtime/pprof"
+	"testing"
 
 	"github.com/gurupras/go-easyfiles"
 	"github.com/gurupras/libphonelab-go"
 	"github.com/shaseley/phonelab-go"
 )
 
-func InitEnv(env *phonelab.Environment) {
-	libphonelab.InitEnv(env)
-}
+var (
+	file = flag.String("file", "", "yaml file")
+)
 
-func main() {
+func TestMain(t *testing.T) {
 	var f *os.File
 	var err error
 	if easyfiles.Exists("cpuprofile.prof") {
@@ -29,7 +31,7 @@ func main() {
 
 	env := phonelab.NewEnvironment()
 	libphonelab.InitEnv(env)
-	conf, err := phonelab.RunnerConfFromFile(os.Args[1])
+	conf, err := phonelab.RunnerConfFromFile(*file)
 	if err != nil {
 		panic(err)
 	}

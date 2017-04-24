@@ -1,6 +1,10 @@
 package libphonelab
 
-import "github.com/shaseley/phonelab-go"
+import (
+	"github.com/gurupras/libphonelab-go/alarms"
+	"github.com/gurupras/libphonelab-go/parsers"
+	"github.com/shaseley/phonelab-go"
+)
 
 func InitEnv(env *phonelab.Environment) {
 	env.Parsers["Kernel-Trace"] = func() phonelab.Parser {
@@ -29,8 +33,24 @@ func InitEnv(env *phonelab.Environment) {
 		c.outPath = kwargs["path"].(string)
 		return c
 	}
+	env.DataCollectors["alarm_cpu_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
+		c := &AlarmCpuCollector{}
+		c.outPath = kwargs["path"].(string)
+		return c
+	}
+	env.DataCollectors["screen_off_cpu_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
+		c := &ScreenOffCpuCollector{}
+		c.outPath = kwargs["path"].(string)
+		return c
+	}
 
 	env.Processors["tag_count_processor"] = &TagCountProcGenerator{}
 	env.Processors["alarm_temp_processor"] = &AlarmTempProcGenerator{}
+	env.Processors["alarm_cpu_processor"] = &AlarmCpuProcGenerator{}
+	env.Processors["screen_off_cpu_processor"] = &ScreenOffCpuProcGenerator{}
 	env.Processors["stitch_processor"] = &StitchGenerator{}
+
+	// Parsers
+	env.RegisterParserGenerator("ThermaPlan->AlarmManagerService", alarms.NewDeliverAlarmsLockedParser)
+	env.RegisterParserGenerator("SurfaceFlinger", parsers.NewScreenStateParser)
 }

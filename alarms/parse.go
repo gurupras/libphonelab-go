@@ -96,7 +96,7 @@ func ParseAlarm(jsonString string) (alarm *Alarm, err error) {
 type DeliverAlarmsLockedParser struct {
 }
 
-func NewDeliverAlarmsLockedParser() *DeliverAlarmsLockedParser {
+func NewDeliverAlarmsLockedParser() phonelab.Parser {
 	return &DeliverAlarmsLockedParser{}
 }
 
