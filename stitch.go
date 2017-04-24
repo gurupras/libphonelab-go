@@ -115,7 +115,7 @@ func (p *StitchProcessor) Process() <-chan interface{} {
 
 	inChan := p.Source.Process()
 
-	sem := gsync.NewSem(4)
+	sem := gsync.NewSem(12)
 	go func() {
 		defer close(outChan)
 		wg := sync.WaitGroup{}
