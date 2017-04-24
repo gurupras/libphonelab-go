@@ -189,7 +189,15 @@ func (s *StitchCollector) Finish() {
 	doNWayMerge(devicePath, s.chunks, s.StitchInfo, s.delete, 100000)
 
 	// Update files
-	s.StitchInfo.Files = append(s.StitchInfo.Files, s.files...)
+	if len(s.files) == 0 {
+		// Special case. If no files were present, then there is a chance
+		// that s.StitchInfo was never initialized
+		if s.StitchInfo == nil {
+			s.StitchInfo = phonelab.NewStitchInfo()
+		}
+	} else {
+		s.StitchInfo.Files = append(s.StitchInfo.Files, s.files...)
+	}
 	sort.Sort(sort.StringSlice(s.StitchInfo.Files))
 
 	// Write info.json
