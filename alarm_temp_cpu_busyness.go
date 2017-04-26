@@ -4,7 +4,9 @@ import (
 	"crypto/md5"
 	"fmt"
 	"io"
+	"net/url"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,6 +14,8 @@ import (
 	"github.com/gurupras/libphonelab-go/alarms"
 	"github.com/gurupras/libphonelab-go/trackers"
 	"github.com/shaseley/phonelab-go"
+	"github.com/shaseley/phonelab-go/serialize"
+	log "github.com/sirupsen/logrus"
 )
 
 type AlarmCpuProcGenerator struct{}
@@ -29,28 +33,9 @@ type AlarmCpuProcessor struct {
 	Info   phonelab.PipelineSourceInfo
 }
 
-type AlarmCpuData struct {
-	*alarms.DeliverAlarmsLocked
-	Temps       []int32
-	Timestamps  []int64
-	TriggerTemp int32
-}
-
-type AlarmCpuResult struct {
-	*AlarmCpuData
-	phonelab.PipelineSourceInfo
-}
-
-func NewAlarmCpuData() *AlarmCpuData {
-	atd := &AlarmCpuData{}
-	atd.Temps = make([]int32, 0)
-	atd.Timestamps = make([]int64, 0)
-	return atd
-}
-
 type SuspendData struct {
-	lastSuspendEntry *phonelab.Logline
 	lastSuspendExit  *phonelab.Logline
+	lastSuspendEntry *phonelab.Logline
 }
 
 func (p *AlarmCpuProcessor) Process() <-chan interface{} {
@@ -60,31 +45,55 @@ func (p *AlarmCpuProcessor) Process() <-chan interface{} {
 	sourceInfo := p.Info.(*phonelab.PhonelabSourceInfo)
 	deviceId := sourceInfo.DeviceId
 
+	loglineDistribution := NewAbstractDistribution(nil, 2*time.Hour)
+
 	var (
-		suspendDataMap   map[*SuspendData][]*phonelab.Logline
-		mapLock          sync.Mutex
-		lastSuspendEntry *phonelab.Logline
-		lastSuspendExit  *phonelab.Logline
+		suspendDataMap  = make(map[*SuspendData][]*phonelab.Logline)
+		mapLock         sync.Mutex
+		lastSuspendExit *phonelab.Logline
 	)
+
 	tracker := trackers.New()
 	trackers.NewCpuTracker(tracker)
 	sleepTracker := trackers.NewSleepTracker(tracker)
 	sleepTracker.SuspendEntryCallback = func(logline *phonelab.Logline) {
-		lastSuspendEntry = logline
+		// We're entering suspend. Process all
+		// existing suspendDataMap entries
+		deleteSet := set.New()
+		wg := sync.WaitGroup{}
+		for sData, _ := range suspendDataMap {
+			sData.lastSuspendEntry = logline
+			_ = mapLock
+			// Find the proper subset of lines
+			wg.Add(1)
+			go func(sData *SuspendData) {
+				defer wg.Done()
+				startIdx, _ := loglineDistribution.FindIdxByTimeBinarySearch(sData.lastSuspendExit.Datetime, 10*time.Second)
+				if startIdx != -1 {
+					deleteSet.Add(sData)
+					processSuspend(deviceId, sData, loglineDistribution.Data[startIdx:], outChan)
+				} else {
+					log.Warnf("Did not find logline near suspend exit")
+				}
+			}(sData)
+		}
+		wg.Wait()
+		for _, obj := range deleteSet.List() {
+			sData := obj.(*SuspendData)
+			delete(suspendDataMap, sData)
+		}
+
 	}
 
 	sleepTracker.SuspendExitCallback = func(logline *phonelab.Logline) {
 		lastSuspendExit = logline
-		sData := &SuspendData{lastSuspendEntry, lastSuspendExit}
+		sData := &SuspendData{lastSuspendExit, nil}
 		suspendDataMap[sData] = make([]*phonelab.Logline, 0)
+		//log.Infof("Added new suspend entry")
 	}
 
 	go func() {
 		defer close(outChan)
-		wg := sync.WaitGroup{}
-
-		alarmSet := set.NewNonTS()
-		var distribution *Distribution
 
 		inChan := p.Source.Process()
 		for obj := range inChan {
@@ -97,13 +106,13 @@ func (p *AlarmCpuProcessor) Process() <-chan interface{} {
 			tracker.ApplyLogline(ll)
 
 			// Update any suspend
-			for sData, lines := range suspendDataMap {
+			loglineDistribution.Update(ll, ll.Datetime.UnixNano())
+			for sData, _ := range suspendDataMap {
 				diff := ll.Datetime.Sub(sData.lastSuspendExit.Datetime)
 				if diff > 2*time.Hour {
 					// Too long. Phone may have been put on charge
+					//log.Warnf("Too long. Dropping suspend data")
 					delete(suspendDataMap, sData)
-				} else {
-					suspendDataMap[sData] = append(lines, ll)
 				}
 				// The valid removal of an entry from suspendDataMap happens below
 				// in case *phonelab.PowerManagementPrintk
@@ -111,42 +120,14 @@ func (p *AlarmCpuProcessor) Process() <-chan interface{} {
 
 			switch t := ll.Payload.(type) {
 			case *phonelab.CpuFrequency:
+				_ = t
 				break
 			case *phonelab.PhonelabNumOnlineCpus:
 				break
 			case *phonelab.PowerManagementPrintk:
-				pmp := t
-				if pmp.State == phonelab.PM_SUSPEND_ENTRY {
-					// We're entering suspend. Process all
-					// existing suspendDataMap entries
-					for sData, lines := range suspendDataMap {
-						wg.Add(1)
-						go func() {
-							defer wg.Done()
-							processSuspend(deviceId, sData, lines, outChan)
-							mapLock.Lock()
-							defer mapLock.Unlock()
-							delete(suspendDataMap, sData)
-						}()
-					}
-				}
-
-			case *alarms.DeliverAlarmsLocked:
-				deliverAlarm := t
-				deliverAlarm.Logline = ll
-				if deliverAlarm.WindowLength == 0 {
-					// Nothing to do
-					continue
-				}
-				if distribution != nil && distribution.IsFull() {
-					// Add this alarm to the alarm set
-					alarmTempData := NewAlarmCpuData()
-					alarmTempData.DeliverAlarmsLocked = deliverAlarm
-					alarmSet.Add(alarmTempData)
-				}
+				break
 			}
 		}
-		wg.Wait()
 	}()
 	return outChan
 }
@@ -161,19 +142,23 @@ type AlarmSuspendData struct {
 	Lines     []string
 }
 
-func processSuspend(deviceId string, sData *SuspendData, lines []*phonelab.Logline, outChannel chan interface{}) {
+func processSuspend(deviceId string, sData *SuspendData, loglines []interface{}, outChannel chan interface{}) {
 	// Find all alarms that occured within the first 5 seconds of suspend exit
 	alarmList := make([]*alarms.DeliverAlarmsLocked, 0)
 	startTime := sData.lastSuspendExit.Datetime
-	for _, line := range lines {
-		if line.Datetime.Sub(startTime) > 5*time.Second {
+	for _, obj := range loglines {
+		logline := obj.(*phonelab.Logline)
+		if logline.Datetime.Sub(startTime) > 5*time.Second {
 			break
 		}
-		dal, _ := alarms.ParseDeliverAlarmsLocked(line)
+		if !strings.Contains(logline.Line, "deliverAlarmsLocked()") {
+			continue
+		}
+		dal, _ := alarms.ParseDeliverAlarmsLocked(logline)
 		if dal != nil {
 			alarmList = append(alarmList, dal)
 		}
-		dal.Logline = line
+		dal.Logline = logline
 	}
 
 	if len(alarmList) == 0 {
@@ -181,6 +166,8 @@ func processSuspend(deviceId string, sData *SuspendData, lines []*phonelab.Logli
 		// just return
 		return
 	}
+
+	log.Debugf("Found suspend entry with alarms: %v", len(alarmList))
 
 	// Find all relevant appPids
 	pids := set.NewNonTS()
@@ -212,10 +199,12 @@ func processSuspend(deviceId string, sData *SuspendData, lines []*phonelab.Logli
 						data[alarm].Busyness = make(map[string][]float64)
 						data[alarm].Periods = make(map[string][]int64)
 						data[alarm].Frequency = make(map[string][]int)
-						data[alarm].Lines = make([]string, len(lines))
-						for idx, logline := range lines {
-							data[alarm].Lines[idx] = logline.Line
-						}
+						/*
+							data[alarm].Lines = make([]string, len(loglines))
+							for idx, logline := range loglines {
+								data[alarm].Lines[idx] = logline.Line
+							}
+						*/
 					}
 					busyness := float64(info.Rtime) / float64(ctxSwitchInfo.TotalTime())
 					cpu := fmt.Sprintf("%d", info.Cpu)
@@ -223,6 +212,10 @@ func processSuspend(deviceId string, sData *SuspendData, lines []*phonelab.Logli
 						data[alarm].Busyness[cpu] = make([]float64, 0)
 						data[alarm].Periods[cpu] = make([]int64, 0)
 						data[alarm].Frequency[cpu] = make([]int, 0)
+					}
+					if _, ok := cpuTracker.CurrentState[info.Cpu]; !ok {
+						// We don't have data yet for this CPU
+						continue
 					}
 					data[alarm].Busyness[cpu] = append(data[alarm].Busyness[cpu], busyness)
 					data[alarm].Periods[cpu] = append(data[alarm].Periods[cpu], ctxSwitchInfo.TotalTime())
@@ -233,8 +226,9 @@ func processSuspend(deviceId string, sData *SuspendData, lines []*phonelab.Logli
 		}
 	}
 
-	for _, line := range lines {
-		tracker.ApplyLogline(line)
+	for _, obj := range loglines {
+		logline := obj.(*phonelab.Logline)
+		tracker.ApplyLogline(logline)
 	}
 
 	for alarm, datetime := range lastInfo {
@@ -248,41 +242,42 @@ func processSuspend(deviceId string, sData *SuspendData, lines []*phonelab.Logli
 
 type AlarmCpuCollector struct {
 	sync.Mutex
-	outPath          string
-	DefaultCollector phonelab.DataCollector
+	outPath    string
+	Serializer serialize.Serializer
 }
 
 type fileContext struct {
 	filename string
 }
 
-func (c *fileContext) Context() string {
-	return c.filename
-}
-
-func (c *fileContext) Type() string {
-	return "file-context"
-}
-
 func (c *AlarmCpuCollector) OnData(data interface{}, info phonelab.PipelineSourceInfo) {
-	r := data.(*AlarmCpuResult)
+	go func() {
+		r := data.(*AlarmSuspendData)
 
-	sourceInfo := r.PipelineSourceInfo.(*phonelab.PhonelabSourceInfo)
-	deviceId := sourceInfo.DeviceId
+		sourceInfo := info.(*phonelab.PhonelabSourceInfo)
+		deviceId := sourceInfo.DeviceId
 
-	outdir := filepath.Join(c.outPath, deviceId, "analysis", "alarm_cpu")
-	h := md5.New()
-	io.WriteString(h, r.DeliverAlarmsLocked.Logline.Line)
-	checksum := fmt.Sprintf("%x", h.Sum(nil))
-	filename := filepath.Join(outdir, fmt.Sprintf("%v.gz", checksum))
+		h := md5.New()
+		io.WriteString(h, r.DeliverAlarmsLocked.Logline.Line)
+		checksum := fmt.Sprintf("%x", h.Sum(nil))
 
-	cc := &fileContext{filename}
+		u, err := url.Parse(c.outPath)
+		if err != nil {
+			log.Fatalf("Failed to parse URL from string: %v: %v", c.outPath, err)
+		}
+		u.Path = filepath.Join(u.Path, deviceId, "analysis", "alarm_cpu", fmt.Sprintf("%v.gz", checksum))
+		filename := u.String()
 
-	r.PipelineSourceInfo = nil
-	c.DefaultCollector.OnData(r, cc)
+		// XXX: Hack. Set Logline.Payload = nil
+		// Otherwise, Logline.Payload refers to
+		// deliverAlarmsLocked -> Logline -> deliverAlarmsLocked ->
+		// you see where this is going
+		r.DeliverAlarmsLocked.Logline.Payload = nil
+
+		c.Serializer.Serialize(r, filename)
+	}()
 }
 
 func (c *AlarmCpuCollector) Finish() {
 	// Nothing to do here
-	c.DefaultCollector.Finish()
 }

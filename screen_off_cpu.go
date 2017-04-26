@@ -1,15 +1,18 @@
 package libphonelab
 
 import (
-	"encoding/json"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/gurupras/libphonelab-go/parsers"
 	"github.com/gurupras/libphonelab-go/trackers"
 	"github.com/shaseley/phonelab-go"
+	"github.com/shaseley/phonelab-go/serialize"
+	log "github.com/sirupsen/logrus"
 )
 
 type ScreenOffCpuProcGenerator struct{}
@@ -32,6 +35,28 @@ type ScreenOffCpuData struct {
 	Duration   map[string][]int64 `json:"duration"`
 	Temps      []int              `json:"temps"`
 	Timestamps []int64            `json:"timestamps"`
+	Date       int64              `json:"date"`
+}
+
+func (s *ScreenOffCpuData) Update(o *ScreenOffCpuData) {
+	for oK, oV := range o.Frequency {
+		if _, ok := s.Frequency[oK]; !ok {
+			s.Frequency[oK] = make([]int, 0)
+		}
+		s.Frequency[oK] = append(s.Frequency[oK], oV...)
+	}
+	for oK, oV := range o.Duration {
+		if _, ok := s.Duration[oK]; !ok {
+			s.Duration[oK] = make([]int64, 0)
+		}
+		s.Duration[oK] = append(s.Duration[oK], oV...)
+	}
+	s.Temps = append(s.Temps, o.Temps...)
+	s.Timestamps = append(s.Timestamps, o.Timestamps...)
+
+	if s.Date == 0 {
+		s.Date = o.Date
+	}
 }
 
 func NewScreenOffCpuData() *ScreenOffCpuData {
@@ -56,21 +81,32 @@ func (p *ScreenOffCpuProcessor) Process() <-chan interface{} {
 		_ = sourceInfo
 
 		tracker := trackers.New()
+		chargeStateTracker := trackers.NewChargingStateTracker(tracker)
+
 		dayTracker := trackers.NewDayTracker(tracker)
 		dayTracker.Callback = func(logline *phonelab.Logline) {
 			//log.Infof("%v: dayTrack=%v", sourceInfo.BootId, logline.Datetime)
+			data.Date = dayTracker.DayStartLogline.Datetime.UnixNano()
 			outChan <- data
 			data = NewScreenOffCpuData()
 		}
 
 		screenStateTracker := trackers.NewScreenStateTracker(tracker)
+		screenStateTracker.Callback = func(state trackers.ScreenState, logline *phonelab.Logline) {
+			log.Debugf("Screen State=%v", state)
+		}
 
 		cpuTracker := trackers.NewCpuTracker(tracker)
 		cpuTracker.Callback = func(cpu int, lineType trackers.CpuLineType, logline *phonelab.Logline) {
 			if screenStateTracker.CurrentState != trackers.SCREEN_STATE_OFF {
-				// We're only tracking screen state off
+				// We're only tracking screen state off and unplugged
 				return
 			}
+			if chargeStateTracker.CurrentState != trackers.CHARGE_STATE_UNPLUGGED {
+				// We're only tracking when unplugged
+				return
+			}
+
 			if lineType == trackers.HOTPLUG_LINE_TYPE {
 				sch := logline.Payload.(*phonelab.SchedCpuHotplug)
 				if sch.Error != 0 {
@@ -98,6 +134,10 @@ func (p *ScreenOffCpuProcessor) Process() <-chan interface{} {
 				fmt.Printf("%v\n%v\n\n", logline.Line, lastLogline.Line)
 			}
 			cpuStr := fmt.Sprintf("%v", cpu)
+			if _, ok := data.Frequency[cpuStr]; !ok {
+				data.Frequency[cpuStr] = make([]int, 0)
+				data.Duration[cpuStr] = make([]int64, 0)
+			}
 			data.Frequency[cpuStr] = append(data.Frequency[cpuStr], curFreq)
 			data.Duration[cpuStr] = append(data.Duration[cpuStr], duration)
 		}
@@ -113,9 +153,21 @@ func (p *ScreenOffCpuProcessor) Process() <-chan interface{} {
 			tracker.ApplyLogline(ll)
 
 			switch t := ll.Payload.(type) {
+			case *phonelab.PLPowerBatteryLog:
+				//log.Infof("battery log")
+			case *phonelab.PLPowerBatteryProps:
+				//log.Infof("battery props")
+			case *phonelab.CpuFrequency:
+				//log.Infof("cpufrequency")
+			case *phonelab.SchedCpuHotplug:
+				//log.Infof("hotplug")
+			case *parsers.ScreenState:
+				//log.Infof("screen state")
 			case *phonelab.ThermalTemp:
-				data.Temps = append(data.Temps, t.Temp)
-				data.Timestamps = append(data.Timestamps, ll.Datetime.UnixNano())
+				if screenStateTracker.CurrentState == trackers.SCREEN_STATE_OFF {
+					data.Temps = append(data.Temps, t.Temp)
+					data.Timestamps = append(data.Timestamps, ll.Datetime.UnixNano())
+				}
 			}
 		}
 	}()
@@ -124,29 +176,55 @@ func (p *ScreenOffCpuProcessor) Process() <-chan interface{} {
 
 type ScreenOffCpuCollector struct {
 	sync.Mutex
-	outPath string
-	Idx     int
+	wg sync.WaitGroup
+	serialize.Serializer
+	outPath       string
+	deviceDateMap map[string]map[string]*ScreenOffCpuData
+	Idx           int
 }
 
 func (c *ScreenOffCpuCollector) OnData(data interface{}, info phonelab.PipelineSourceInfo) {
-	r := data.(*ScreenOffCpuData)
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		r := data.(*ScreenOffCpuData)
 
-	sourceInfo := info.(*phonelab.PhonelabSourceInfo)
-	deviceId := sourceInfo.DeviceId
-	//log.Infof("deviceid=%v", deviceId)
+		sourceInfo := info.(*phonelab.PhonelabSourceInfo)
+		deviceId := sourceInfo.DeviceId
+		//log.Infof("deviceid=%v", deviceId)
 
-	outdir := filepath.Join(c.outPath, deviceId, "analysis", "alarm_cpu")
-	c.Lock()
-	filename := filepath.Join(outdir, fmt.Sprintf("%08d.gz", c.Idx))
-	c.Idx++
-	c.Unlock()
+		date := time.Unix(0, r.Date)
+		dateStr := fmt.Sprintf("%04d%02d%02d", date.Year(), int(date.Month()), date.Day())
 
-	b, _ := json.MarshalIndent(r, "", "    ")
-
-	sourceInfo.FSInterface.Makedirs(outdir)
-	sourceInfo.FSInterface.WriteFile(filename, b, 0664)
+		if _, ok := c.deviceDateMap[deviceId]; !ok {
+			c.deviceDateMap[deviceId] = make(map[string]*ScreenOffCpuData)
+		}
+		dateMap := c.deviceDateMap[deviceId]
+		if _, ok := dateMap[dateStr]; !ok {
+			dateMap[dateStr] = NewScreenOffCpuData()
+		}
+		dateMap[dateStr].Update(r)
+	}()
 }
 
 func (c *ScreenOffCpuCollector) Finish() {
-	// Nothing to do here
+	c.wg.Wait()
+
+	for deviceId, dateMap := range c.deviceDateMap {
+		for dateStr, r := range dateMap {
+			u, err := url.Parse(c.outPath)
+			if err != nil {
+				log.Fatalf("Failed to parse URL from string: %v: %v", c.outPath, err)
+			}
+
+			u.Path = filepath.Join(u.Path, deviceId, "analysis", "screen_off_cpu", fmt.Sprintf("%v.gz", dateStr))
+			filename := u.String()
+
+			log.Infof("Serializing filename=%v", filename)
+			err = c.Serializer.Serialize(r, filename)
+			if err != nil {
+				log.Fatalf("Failed to serialize: %v", err)
+			}
+		}
+	}
 }

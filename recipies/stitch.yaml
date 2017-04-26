@@ -10,7 +10,7 @@ source:
   type: phonelab-raw
   #sources: ["/phonelab/mobicom17-alarms/data/ac23ab520925fca80ab4b451eb1451f3c0973f47/info.json"]
   #sources: ["/phonelab/mobicom17-alarms/test-device/d1308093f6d80737f5fbee63e6731ffe43fa2127/time"]
-  sources: ["/raw/**/time"]
+  sources: ["/raw/bec21cbe87eb6cb2318db971eeea215f21e2df18/time"]
   args:
     hdfs_addr: dirtydeeds.cse.buffalo.edu:9000
     processed_path: /processed/

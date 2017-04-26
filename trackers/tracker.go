@@ -36,6 +36,9 @@ func (f *Tracker) Apply(line string) {
 }
 
 func (f *Tracker) ApplyLogline(logline *phonelab.Logline) {
+	if logline == nil || logline.Payload == nil {
+		return
+	}
 	for _, ffunc := range f.trackerFuncs {
 		ffunc(logline)
 	}

@@ -4,6 +4,8 @@ import (
 	"github.com/gurupras/libphonelab-go/alarms"
 	"github.com/gurupras/libphonelab-go/parsers"
 	"github.com/shaseley/phonelab-go"
+	"github.com/shaseley/phonelab-go/serialize"
+	log "github.com/sirupsen/logrus"
 )
 
 func InitEnv(env *phonelab.Environment) {
@@ -20,27 +22,47 @@ func InitEnv(env *phonelab.Environment) {
 			c.tagMap = make(map[string]int64)
 			return c
 		}
-		env.DataCollectors["alarm_temp_collector"] = func() phonelab.DataCollector {
-			c := &AlarmTempCollector{}
-			return c
-		}
 	*/
+	env.DataCollectors["alarm_temp_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
+		c := &AlarmTempCollector{}
+		path := kwargs["path"].(string)
+		serializer, err := serialize.DetectSerializer(path)
+		if err != nil {
+			panic(err)
+		}
+		log.Debugf("Got serializer: %t", serializer)
+		c.Serializer = serializer
+		c.outPath = path
+		return c
+	}
 
 	env.DataCollectors["stitch_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
 		c := &StitchCollector{}
-		c.chunks = make([]string, 0)
-		c.files = make([]string, 0)
+		c.chunkMap = make(map[string][]string)
 		c.outPath = kwargs["path"].(string)
 		return c
 	}
 	env.DataCollectors["alarm_cpu_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
 		c := &AlarmCpuCollector{}
-		c.outPath = kwargs["path"].(string)
+		path := kwargs["path"].(string)
+		serializer, err := serialize.DetectSerializer(path)
+		if err != nil {
+			panic(err)
+		}
+		c.Serializer = serializer
+		c.outPath = path
 		return c
 	}
 	env.DataCollectors["screen_off_cpu_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
 		c := &ScreenOffCpuCollector{}
-		c.outPath = kwargs["path"].(string)
+		path := kwargs["path"].(string)
+		serializer, err := serialize.DetectSerializer(path)
+		if err != nil {
+			panic(err)
+		}
+		c.Serializer = serializer
+		c.outPath = path
+		c.deviceDateMap = make(map[string]map[string]*ScreenOffCpuData)
 		return c
 	}
 

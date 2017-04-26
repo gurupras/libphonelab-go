@@ -3,6 +3,7 @@ package trackers
 import (
 	"strings"
 
+	"github.com/labstack/gommon/log"
 	"github.com/shaseley/phonelab-go"
 )
 
@@ -68,7 +69,11 @@ func NewCpuTracker(tracker *Tracker) (cpuTracker *CpuTracker) {
 	cpuTracker.Callback = nil
 
 	trackerFunc := func(logline *phonelab.Logline) bool {
-
+		defer func() {
+			if r := recover(); r != nil {
+				log.Infof("Failed on line: %v", logline.Line)
+			}
+		}()
 		switch t := logline.Payload.(type) {
 		case phonelab.TraceInterface:
 			var cpu int
