@@ -1,6 +1,17 @@
 .*.sw*
 *.prof
+*.test
+*.so
+Session.vim
+# Protobuf
+*_pb2*
 
 /tag_count/tag_count
 /missing_loglines/missing_loglines
 /thermal_temp_gap_distribution/thermal_temp_gap_distribution
+/lib/lib
+/stitch/stitch
+/upload_raw/upload_raw
+
+# Test
+/test
