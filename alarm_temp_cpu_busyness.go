@@ -54,9 +54,54 @@ func (p *AlarmCpuProcessor) Process() <-chan interface{} {
 	)
 
 	tracker := trackers.New()
+	missingLoglinesTracker := trackers.NewMissingLoglinesTracker(tracker)
+	missingLoglinesTracker.AddCallback(func(logline *phonelab.Logline) {
+		// We cannot be sure if we missed a suspend logline
+		for k := range suspendDataMap {
+			delete(suspendDataMap, k)
+		}
+	})
+	chargingStateTracker := trackers.NewChargingStateTracker(tracker)
+	chargingStateTracker.Callback = func(state trackers.ChargingState, logline *phonelab.Logline) {
+		if state == trackers.CHARGE_STATE_CHARGING {
+			// Clear map. Device began charging
+			for k := range suspendDataMap {
+				delete(suspendDataMap, k)
+			}
+		}
+	}
+	missingLoglinesTracker.AddCallback(func(logline *phonelab.Logline) {
+		chargingStateTracker.CurrentState = trackers.CHARGE_STATE_UNKNOWN
+	})
+
+	screenStateTracker := trackers.NewScreenStateTracker(tracker)
+	missingLoglinesTracker.AddCallback(func(logline *phonelab.Logline) {
+		screenStateTracker.CurrentState = trackers.SCREEN_STATE_UNKNOWN
+	})
+	screenStateTracker.Callback = func(state trackers.ScreenState, logline *phonelab.Logline) {
+		if state == trackers.SCREEN_STATE_ON {
+			// Clear map. The device screen turned on
+			for k := range suspendDataMap {
+				delete(suspendDataMap, k)
+			}
+		}
+	}
+
 	trackers.NewCpuTracker(tracker)
 	sleepTracker := trackers.NewSleepTracker(tracker)
+	missingLoglinesTracker.AddCallback(func(logline *phonelab.Logline) {
+		//log.Infof("Resetting sleep state")
+		sleepTracker.CurrentState = trackers.SUSPEND_STATE_UNKNOWN
+	})
 	sleepTracker.SuspendEntryCallback = func(logline *phonelab.Logline) {
+		if sleepTracker.CurrentState != trackers.SUSPEND_STATE_AWAKE {
+			// Going to sleep when not awake??
+			// Delete existing entries
+			for k := range suspendDataMap {
+				delete(suspendDataMap, k)
+			}
+			return
+		}
 		// We're entering suspend. Process all
 		// existing suspendDataMap entries
 		deleteSet := set.New()
@@ -70,11 +115,11 @@ func (p *AlarmCpuProcessor) Process() <-chan interface{} {
 				defer wg.Done()
 				startIdx, _ := loglineDistribution.FindIdxByTimeBinarySearch(sData.lastSuspendExit.Datetime, 10*time.Second)
 				if startIdx != -1 {
-					deleteSet.Add(sData)
 					processSuspend(deviceId, sData, loglineDistribution.Data[startIdx:], outChan)
 				} else {
 					log.Warnf("Did not find logline near suspend exit")
 				}
+				deleteSet.Add(sData)
 			}(sData)
 		}
 		wg.Wait()
@@ -86,10 +131,12 @@ func (p *AlarmCpuProcessor) Process() <-chan interface{} {
 	}
 
 	sleepTracker.SuspendExitCallback = func(logline *phonelab.Logline) {
-		lastSuspendExit = logline
-		sData := &SuspendData{lastSuspendExit, nil}
-		suspendDataMap[sData] = make([]*phonelab.Logline, 0)
-		//log.Infof("Added new suspend entry")
+		if screenStateTracker.CurrentState == trackers.SCREEN_STATE_OFF && chargingStateTracker.CurrentState == trackers.CHARGE_STATE_UNPLUGGED {
+			lastSuspendExit = logline
+			sData := &SuspendData{lastSuspendExit, nil}
+			suspendDataMap[sData] = make([]*phonelab.Logline, 0)
+			//log.Infof("Added new suspend entry")
+		}
 	}
 
 	go func() {
@@ -154,11 +201,11 @@ func processSuspend(deviceId string, sData *SuspendData, loglines []interface{},
 		if !strings.Contains(logline.Line, "deliverAlarmsLocked()") {
 			continue
 		}
-		dal, _ := alarms.ParseDeliverAlarmsLocked(logline)
+		dal, _ := logline.Payload.(*alarms.DeliverAlarmsLocked)
 		if dal != nil {
 			alarmList = append(alarmList, dal)
+			dal.Logline = logline
 		}
-		dal.Logline = logline
 	}
 
 	if len(alarmList) == 0 {
@@ -270,7 +317,7 @@ func (c *AlarmCpuCollector) OnData(data interface{}, info phonelab.PipelineSourc
 
 		// XXX: Hack. Set Logline.Payload = nil
 		// Otherwise, Logline.Payload refers to
-		// deliverAlarmsLocked -> Logline -> deliverAlarmsLocked ->
+		// deliverAlarmsLocked -> Logline -> deliverAlarmsLocked -> ...
 		// you see where this is going
 		r.DeliverAlarmsLocked.Logline.Payload = nil
 

@@ -77,26 +77,59 @@ func (p *ScreenOffCpuProcessor) Process() <-chan interface{} {
 		defer close(outChan)
 
 		data := NewScreenOffCpuData()
+		current := NewScreenOffCpuData()
 
 		_ = sourceInfo
 
 		tracker := trackers.New()
+		missingLoglinesTracker := trackers.NewMissingLoglinesTracker(tracker)
+		missingLoglinesTracker.AddCallback(func(logline *phonelab.Logline) {
+			// We cannot be sure if we missed a screen off/on logline
+			// So reset
+			data.Update(current)
+			current = NewScreenOffCpuData()
+		})
+
 		chargeStateTracker := trackers.NewChargingStateTracker(tracker)
+		missingLoglinesTracker.AddCallback(func(logline *phonelab.Logline) {
+			chargeStateTracker.CurrentState = trackers.CHARGE_STATE_UNKNOWN
+		})
 
 		dayTracker := trackers.NewDayTracker(tracker)
 		dayTracker.Callback = func(logline *phonelab.Logline) {
 			//log.Infof("%v: dayTrack=%v", sourceInfo.BootId, logline.Datetime)
+			data.Update(current)
 			data.Date = dayTracker.DayStartLogline.Datetime.UnixNano()
+			if len(data.Temps) != 0 {
+				log.Infof("Shipped out data")
+			}
 			outChan <- data
 			data = NewScreenOffCpuData()
+			current = NewScreenOffCpuData()
 		}
 
 		screenStateTracker := trackers.NewScreenStateTracker(tracker)
 		screenStateTracker.Callback = func(state trackers.ScreenState, logline *phonelab.Logline) {
+			if screenStateTracker.CurrentState == trackers.SCREEN_STATE_OFF && state == trackers.SCREEN_STATE_ON {
+				// Update data with current and reset current
+				data.Update(current)
+				current = NewScreenOffCpuData()
+			}
 			log.Debugf("Screen State=%v", state)
 		}
+		missingLoglinesTracker.AddCallback(func(logline *phonelab.Logline) {
+			screenStateTracker.CurrentState = trackers.SCREEN_STATE_UNKNOWN
+		})
 
 		cpuTracker := trackers.NewCpuTracker(tracker)
+		missingLoglinesTracker.AddCallback(func(logline *phonelab.Logline) {
+			for _, data := range cpuTracker.CurrentState {
+				data.Frequency = trackers.FREQUENCY_STATE_UNKNOWN
+				data.CpuState = trackers.CPU_STATE_UNKNOWN
+				data.FrequencyLogline = nil
+				data.CpuStateLogline = nil
+			}
+		})
 		cpuTracker.Callback = func(cpu int, lineType trackers.CpuLineType, logline *phonelab.Logline) {
 			if screenStateTracker.CurrentState != trackers.SCREEN_STATE_OFF {
 				// We're only tracking screen state off and unplugged
@@ -135,11 +168,11 @@ func (p *ScreenOffCpuProcessor) Process() <-chan interface{} {
 			}
 			cpuStr := fmt.Sprintf("%v", cpu)
 			if _, ok := data.Frequency[cpuStr]; !ok {
-				data.Frequency[cpuStr] = make([]int, 0)
-				data.Duration[cpuStr] = make([]int64, 0)
+				current.Frequency[cpuStr] = make([]int, 0)
+				current.Duration[cpuStr] = make([]int64, 0)
 			}
-			data.Frequency[cpuStr] = append(data.Frequency[cpuStr], curFreq)
-			data.Duration[cpuStr] = append(data.Duration[cpuStr], duration)
+			current.Frequency[cpuStr] = append(current.Frequency[cpuStr], curFreq)
+			current.Duration[cpuStr] = append(current.Duration[cpuStr], duration)
 		}
 
 		inChan := p.Source.Process()
@@ -165,8 +198,8 @@ func (p *ScreenOffCpuProcessor) Process() <-chan interface{} {
 				//log.Infof("screen state")
 			case *phonelab.ThermalTemp:
 				if screenStateTracker.CurrentState == trackers.SCREEN_STATE_OFF {
-					data.Temps = append(data.Temps, t.Temp)
-					data.Timestamps = append(data.Timestamps, ll.Datetime.UnixNano())
+					current.Temps = append(current.Temps, t.Temp)
+					current.Timestamps = append(current.Timestamps, ll.Datetime.UnixNano())
 				}
 			}
 		}

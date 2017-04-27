@@ -22,17 +22,19 @@ processors:
       - "Kernel-Trace"
       - "SurfaceFlinger"
       - "Power-Battery-PhoneLab"
-    filters:
-      - type: "simple"
-        filter: "SurfaceFlinger"
-      - type: "simple"
-        filter: "cpu_frequency:"
-      - type: "simple"
-        filter: "sched_cpu_hotplug:"
-      - type: "simple"
-        filter: "thermal_temp:"
-      - type: "simple"
-        filter: "Power-Battery-PhoneLab"
+# We cannot be using filters since there are missing loglines Uncomment these
+# once the missing logline problem has been corrected
+#    filters:
+#      - type: "simple"
+#        filter: "SurfaceFlinger"
+#      - type: "simple"
+#        filter: "cpu_frequency:"
+#      - type: "simple"
+#        filter: "sched_cpu_hotplug:"
+#      - type: "simple"
+#        filter: "thermal_temp:"
+#      - type: "simple"
+#        filter: "Power-Battery-PhoneLab"
 
 
 sink:

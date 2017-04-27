@@ -59,10 +59,10 @@ func NewSleepTracker(tracker *Tracker) (sleepTracker *SleepTracker) {
 				if sleepTracker.CurrentState == SUSPEND_STATE_SUSPENDED {
 					log("Suspend when suspended?")
 				}
-				sleepTracker.CurrentState = SUSPEND_STATE_SUSPENDED
 				if sleepTracker.SuspendEntryCallback != nil {
 					sleepTracker.SuspendEntryCallback(logline)
 				}
+				sleepTracker.CurrentState = SUSPEND_STATE_SUSPENDED
 				sleepTracker.lastSuspendEntry = pmp
 			case phonelab.PM_SUSPEND_EXIT:
 				if sleepTracker.CurrentState != SUSPEND_STATE_SUSPENDED {
@@ -73,10 +73,10 @@ func NewSleepTracker(tracker *Tracker) (sleepTracker *SleepTracker) {
 						os.Exit(-1)
 					}
 				}
-				sleepTracker.CurrentState = SUSPEND_STATE_AWAKE
 				if sleepTracker.SuspendExitCallback != nil {
 					sleepTracker.SuspendExitCallback(logline)
 				}
+				sleepTracker.CurrentState = SUSPEND_STATE_AWAKE
 			}
 			if sleepTracker.Exclusive {
 				return result

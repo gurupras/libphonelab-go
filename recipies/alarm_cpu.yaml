@@ -1,7 +1,7 @@
 data_collector:
   name: "alarm_cpu_collector"
   args:
-    path: /phonelab/mobicom17-alarms/data
+    path: file:///phonelab/mobicom17-alarms/data
     #path: hdfs://dirtydeeds.cse.buffalo.edu:9000/processed
     #path http://dirtydeeds.cse.buffalo.edu:31442/upload
     aggregate: false
@@ -22,17 +22,22 @@ processors:
     parsers:
       - "Kernel-Trace"
       - "KernelPrintk"
-    filters:
-      - type: "simple"
-        filter: "periodic_ctx"
-      - type: "simple"
-        filter: "cpu_frequency:"
-      - type: "simple"
-        filter: "sched_cpu_hotplug:"
-      - type: "simple"
-        filter: "deliverAlarmsLocked()"
-      - type: "regex"
-        filter: "KernelPrintk.*PM:"
+      - "ThermaPlan->AlarmManagerService"
+      - "SurfaceFlinger"
+      - "Power-Battery-PhoneLab"
+# We cannot be using filters since there are missing loglines Uncomment these
+# once the missing logline problem has been corrected
+#    filters:
+#      - type: "simple"
+#        filter: "periodic_ctx"
+#      - type: "simple"
+#        filter: "cpu_frequency:"
+#      - type: "simple"
+#        filter: "sched_cpu_hotplug:"
+#      - type: "simple"
+#        filter: "deliverAlarmsLocked()"
+#      - type: "regex"
+#        filter: "KernelPrintk.*PM:"
 
 
 sink:
