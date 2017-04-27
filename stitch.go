@@ -378,7 +378,7 @@ func doNWayMerge(devicePath string, chunkMap map[string][]string, info *phonelab
 		idx++
 	}
 	sort.Sort(sort.StringSlice(keys))
-	for _, key := range keys {
+	for idx, key := range keys {
 		chunks := chunkMap[key]
 		localOutChan, err := extsort.NWayMergeGenerator(chunks, SortParams)
 		if err != nil {
@@ -415,6 +415,7 @@ func doNWayMerge(devicePath string, chunkMap map[string][]string, info *phonelab
 			bootid_channel_map[boot_id] <- logline
 			linesWritten++
 		}
+		log.Infof("Finished processing: %d/%d", idx+1, len(keys))
 	}
 
 	log.Infof("Cleaning up.. Wrote a total of %d lines", linesWritten)
