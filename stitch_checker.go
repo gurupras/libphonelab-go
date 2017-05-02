@@ -23,10 +23,11 @@ type StitchCheckerProcessor struct {
 }
 
 type StitchCheckerData struct {
-	DeviceId            string `json:"deviceId"`
-	BootId              string `json:"bootId"`
-	BootIdFail          bool   `json:"bootIdFail"`
-	IncreasingTokenFail bool   `json:"increasingTokenFail"`
+	DeviceId            string `json:"device_id"`
+	BootId              string `json:"boot_id"`
+	BootIdFail          bool   `json:"boot_id_fail"`
+	IncreasingTokenFail bool   `json:"increasing_token_fail"`
+	LineCount           int64  `json:"line_count"`
 }
 
 func (p *StitchCheckerProcessor) Process() <-chan interface{} {
@@ -47,6 +48,7 @@ func (p *StitchCheckerProcessor) Process() <-chan interface{} {
 			if !ok {
 				continue
 			}
+			data.LineCount++
 
 			if strings.Compare(ll.BootId, data.BootId) != 0 {
 				if !data.BootIdFail {
