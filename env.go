@@ -87,6 +87,7 @@ func InitEnv(env *phonelab.Environment) {
 	env.Processors["alarms_per_device_day_processor"] = &AlarmsPerDDProcGenerator{}
 	env.Processors["screen_off_cpu_processor"] = &ScreenOffCpuProcGenerator{}
 	env.Processors["stitch_processor"] = &StitchGenerator{}
+	env.Processors["stitch_checker_processor"] = &StitchCheckerProcGenerator{}
 
 	// Parsers
 	env.RegisterParserGenerator("ThermaPlan->AlarmManagerService", alarms.NewDeliverAlarmsLockedParser)
