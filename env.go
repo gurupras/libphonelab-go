@@ -68,10 +68,23 @@ func InitEnv(env *phonelab.Environment) {
 		c.deviceDateMap = make(map[string]map[string]*ScreenOffCpuData)
 		return c
 	}
+	env.DataCollectors["alarms_per_device_day_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
+		c := &AlarmsPerDDCollector{}
+		path := kwargs["path"].(string)
+		serializer, err := serialize.DetectSerializer(path)
+		if err != nil {
+			panic(err)
+		}
+		c.deviceDataMap = make(map[string]map[string]int64)
+		c.Serializer = serializer
+		c.outPath = path
+		return c
+	}
 
 	env.Processors["tag_count_processor"] = &TagCountProcGenerator{}
 	env.Processors["alarm_temp_processor"] = &AlarmTempProcGenerator{}
 	env.Processors["alarm_cpu_processor"] = &AlarmCpuProcGenerator{}
+	env.Processors["alarms_per_device_day_processor"] = &AlarmsPerDDProcGenerator{}
 	env.Processors["screen_off_cpu_processor"] = &ScreenOffCpuProcGenerator{}
 	env.Processors["stitch_processor"] = &StitchGenerator{}
 
