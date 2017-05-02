@@ -11,6 +11,9 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
+
+	"gopkg.in/vmihailenco/msgpack.v2"
 
 	"github.com/gurupras/go-easyfiles"
 	"github.com/gurupras/go-external-sort"
@@ -102,14 +105,19 @@ type ChunkData struct {
 	Chunks []string
 }
 
-func (p *StitchProcessor) Process() <-chan interface{} {
-	outChan := make(chan interface{})
+var __stitch_process_initialized = make(map[string]bool)
 
-	var stitchInfo *phonelab.StitchInfo
+func (p *StitchProcessor) Process() <-chan interface{} {
+	outChan := make(chan interface{}, 5)
+
+	stitchInfo := make(map[string]*phonelab.StitchInfo)
+
+	sourceInfo := p.Info.(*phonelab.PhonelabRawInfo)
 	if SortParams.FSInterface == nil {
-		sourceInfo := p.Info.(*phonelab.PhonelabRawInfo)
-		stitchInfo = sourceInfo.StitchInfo
 		SortParams.FSInterface = sourceInfo.FSInterface
+	}
+	if _, ok := __stitch_process_initialized[sourceInfo.Context()]; !ok {
+		stitchInfo[sourceInfo.Context()] = sourceInfo.StitchInfo
 	}
 
 	inChan := p.Source.Process()
@@ -138,115 +146,191 @@ func (p *StitchProcessor) Process() <-chan interface{} {
 				if err != nil {
 					log.Fatalf("Failed to run external sort on file: %v: %v", file, err)
 				}
-				outChan <- &ChunkData{stitchInfo, file, chunks}
+				outChan <- &ChunkData{stitchInfo[p.Info.Context()], file, chunks}
 				sentOne = true
 			}(file)
 		}
-		if !sentOne {
-			outChan <- &ChunkData{stitchInfo, "", []string{}}
-		}
 		wg.Wait()
+		if !sentOne {
+			log.Infof("Sending empty chunkData")
+			outChan <- &ChunkData{stitchInfo[p.Info.Context()], "", []string{}}
+		}
 	}()
 	return outChan
 }
 
 type StitchCollector struct {
-	deviceId    string
-	delete      bool
+	delete      map[string]bool
 	outPath     string
-	chunkMap    map[string][]string
-	initialized bool
-	*phonelab.StitchInfo
+	chunkMap    map[string]map[string][]string
+	initialized map[string]bool
+	StitchInfo  map[string]*phonelab.StitchInfo
+	wg          sync.WaitGroup
+	sem         *gsync.Semaphore
 }
 
 func (s *StitchCollector) OnData(data interface{}, info phonelab.PipelineSourceInfo) {
-	s.deviceId = info.Context()
+	deviceId := info.Context()
 
-	log.Infof("s.OnData()")
-	log.Infof("s.outPath=%v", s.outPath)
+	if _, ok := s.chunkMap[deviceId]; !ok {
+		s.chunkMap[deviceId] = make(map[string][]string)
+	}
+
+	log.Debugf("s.OnData()")
 
 	chunkData := data.(*ChunkData)
+	log.Infof("chunkData.File=%v  s.outPath=%v", chunkData.File, s.outPath)
 
 	stitchInfo := chunkData.StitchInfo
-	if !s.initialized {
+	if !s.initialized[deviceId] {
 		if stitchInfo == nil {
-			s.delete = true
-			s.StitchInfo = phonelab.NewStitchInfo()
+			s.delete[deviceId] = true
+			s.StitchInfo[deviceId] = phonelab.NewStitchInfo()
 			log.Infof("StitchInfo was nil..created a new one")
 		} else {
-			s.delete = false
-			s.StitchInfo = stitchInfo
+			s.delete[deviceId] = false
+			s.StitchInfo[deviceId] = stitchInfo
 			log.Infof("Using existing StitchInfo")
 		}
-		s.initialized = true
+		s.initialized[deviceId] = true
 	}
 
-	if strings.Compare(chunkData.File, "") != 0 {
-		s.chunkMap[chunkData.File] = chunkData.Chunks
+	if strings.Compare(chunkData.File, "") == 0 {
+		// Empty chunkData. Nothing to do
+		return
 	}
+
+	s.chunkMap[deviceId][chunkData.File] = chunkData.Chunks
+
+	if s.sem == nil {
+		s.sem = gsync.NewSem(16)
+	}
+	s.sem.P()
+	s.wg.Add(1)
+	go func() {
+		key := chunkData.File
+		defer s.sem.V()
+		defer s.wg.Done()
+		chunks := s.chunkMap[deviceId][key]
+		args := make(map[string]interface{})
+		args["channel_size"] = 10000
+		localOutChan, err := extsort.NWayMergeGenerator(chunks, SortParams, args)
+		if err != nil {
+			log.Fatalf("%v", err)
+		}
+
+		fs := SortParams.FSInterface
+		sortedFile := fmt.Sprintf("%s.sorted.gz", key)
+		f, err := fs.Open(sortedFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, easyfiles.GZ_TRUE)
+		if err != nil {
+			log.Fatalf("Failed to open '%v': %v", sortedFile, err)
+		}
+		writer, err := f.Writer(1048576)
+		if err != nil {
+			log.Fatalf("Failed to get writer to '%v': %v", sortedFile, err)
+		}
+		for {
+			si, ok := <-localOutChan
+			if !ok {
+				break
+			}
+			logline, ok := si.(*SortableLogline)
+			if !ok {
+				log.Fatalf("Could not convert to logline: \n%v\n%v", si.String(), err)
+			}
+			b, err := msgpack.Marshal(logline)
+			if err != nil {
+				log.Fatalf("Failed to marshal: %v", err)
+			}
+			writer.Write(b)
+		}
+		writer.Flush()
+		writer.Close()
+		f.Close()
+
+		//log.Infof("Finished %v/%v", atomic.AddUint32(&finished, 1), len(keys))
+	}()
 }
 
 func (s *StitchCollector) Finish() {
 	log.Infof("StitchCollector finish()")
-	//log.Infof("outPath=%v", s.outPath)
-	devicePath := filepath.Join(s.outPath, s.deviceId)
-	//log.Infof("devicePath=%v", devicePath)
+	s.wg.Wait()
 
-	log.Debugf("Calling doNWayMerge")
-	doNWayMerge(devicePath, s.chunkMap, s.StitchInfo, s.delete, 100000)
+	wg := sync.WaitGroup{}
+	finished := uint32(0)
+	for deviceId := range s.chunkMap {
+		wg.Add(1)
+		go func(deviceId string) {
+			defer wg.Done()
+			devicePath := filepath.Join(s.outPath, deviceId)
+			//log.Infof("devicePath=%v", devicePath)
 
-	// Update files
-	if len(s.chunkMap) == 0 {
-		// Special case. If no files were present, then there is a chance
-		// that s.StitchInfo was never initialized
-		if s.StitchInfo == nil {
-			s.StitchInfo = phonelab.NewStitchInfo()
-		}
-	} else {
-		for file, _ := range s.chunkMap {
-			s.StitchInfo.Files = append(s.StitchInfo.Files, file)
-		}
-	}
-	sort.Sort(sort.StringSlice(s.StitchInfo.Files))
+			log.Debugf("Calling doNWayMerge")
+			doNWayMerge(devicePath, s.chunkMap[deviceId], s.StitchInfo[deviceId], s.delete[deviceId], 100000)
 
-	// Write info.json
-	infoJsonPath := filepath.Join(devicePath, "info.json")
-	log.Infof("Writing info.json: %v", infoJsonPath)
-	b, err := json.MarshalIndent(s.StitchInfo, "", "    ")
-	if err != nil {
-		log.Fatalf("Failed to marshal StitchInfo to write to info.json: %v", err)
-	}
-	f, err := SortParams.FSInterface.Open(infoJsonPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, easyfiles.GZ_FALSE)
-	if err != nil {
-		log.Fatalf("Failed to create/open: %v: %v", infoJsonPath, err)
-	}
-	defer f.Close()
-
-	writer, err := f.Writer(0)
-	if err != nil {
-		log.Fatalf("Failed to get writer to info.json: %v", err)
-	}
-	defer writer.Close()
-	defer writer.Flush()
-
-	if _, err = writer.Write(b); err != nil {
-		log.Fatalf("Failed to write to info.json: %v", err)
-	}
-
-	for _, chunks := range s.chunkMap {
-		for _, chunk := range chunks {
-			if err := SortParams.FSInterface.Remove(chunk); err != nil {
-				log.Fatalf("Failed to remove: %v", chunk)
+			// Update files
+			if len(s.chunkMap[deviceId]) == 0 {
+				// This can happen in two cases.
+				// 1) info.json was already present and no new
+				// files were found to be processed.
+				// 2) Special case. No files to be processed
+				// for this device.
+				// This means s.StitchInfo[deviceId] was never
+				// initialized
+				if s.StitchInfo[deviceId] == nil {
+					s.StitchInfo[deviceId] = phonelab.NewStitchInfo()
+				}
+			} else {
+				for file, _ := range s.chunkMap[deviceId] {
+					s.StitchInfo[deviceId].Files = append(s.StitchInfo[deviceId].Files, file)
+				}
 			}
-		}
+			sort.Sort(sort.StringSlice(s.StitchInfo[deviceId].Files))
+
+			if len(s.chunkMap[deviceId]) == 0 {
+			}
+			// Write info.json
+			infoJsonPath := filepath.Join(devicePath, "info.json")
+			log.Infof("Writing info.json: %v", infoJsonPath)
+			b, err := json.MarshalIndent(s.StitchInfo[deviceId], "", "    ")
+			if err != nil {
+				log.Fatalf("Failed to marshal StitchInfo to write to info.json: %v", err)
+			}
+			f, err := SortParams.FSInterface.Open(infoJsonPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, easyfiles.GZ_FALSE)
+			if err != nil {
+				log.Fatalf("Failed to create/open: %v: %v", infoJsonPath, err)
+			}
+			defer f.Close()
+
+			writer, err := f.Writer(1048576)
+			if err != nil {
+				log.Fatalf("Failed to get writer to info.json: %v", err)
+			}
+			defer writer.Close()
+			defer writer.Flush()
+
+			if _, err = writer.Write(b); err != nil {
+				log.Fatalf("Failed to write to info.json: %v", err)
+			}
+
+			for _, chunks := range s.chunkMap[deviceId] {
+				for _, chunk := range chunks {
+					if err := SortParams.FSInterface.Remove(chunk); err != nil {
+						log.Fatalf("Failed to remove: %v", chunk)
+					}
+				}
+			}
+			log.Infof("Finished stitching devices %d/%d", atomic.AddUint32(&finished, 1), len(s.chunkMap))
+		}(deviceId)
 	}
+	wg.Wait()
 }
 
 func doNWayMerge(devicePath string, chunkMap map[string][]string, info *phonelab.StitchInfo, delete bool, lines_per_file int) {
-	bootid_channel_map := make(map[string]chan *SortableLogline)
+	bootid_channel_map := make(map[string]chan *phonelab.Logline)
 
 	linesWritten := uint32(0)
-	boot_id_consumer := func(boot_id string, channel chan *SortableLogline, wg *sync.WaitGroup) {
+	boot_id_consumer := func(boot_id string, channel chan *phonelab.Logline, wg *sync.WaitGroup) {
 		defer wg.Done()
 		var err error
 
@@ -254,9 +338,26 @@ func doNWayMerge(devicePath string, chunkMap map[string][]string, info *phonelab
 		cur_idx := 0
 		cur_line_count := 0
 		outdir := filepath.Join(devicePath, boot_id)
-		var cur_filename string
-		var cur_file *easyfiles.File
-		var cur_file_writer *easyfiles.Writer
+		var (
+			cur_filename    string
+			cur_file        *easyfiles.File
+			cur_file_writer *easyfiles.Writer
+			fileInfo        *phonelab.StitchFileInfo
+		)
+
+		cleanup := func() {
+			if err = cur_file_writer.Flush(); err != nil {
+				log.Fatalf("Failed writer flush: %v: %v", cur_filename, err)
+			}
+			if err = cur_file_writer.Close(); err != nil {
+				log.Fatalf("Failed writer close: %v: %v", cur_filename, err)
+			}
+			if err = cur_file.Close(); err != nil {
+				log.Fatalf("Failed file close: %v: %v", cur_filename, err)
+			}
+			basename := path.Base(cur_filename)
+			info.BootInfo[boot_id][basename] = fileInfo
+		}
 
 		fs := SortParams.FSInterface
 		// Make directory if it doesn't exist
@@ -291,22 +392,6 @@ func doNWayMerge(devicePath string, chunkMap map[string][]string, info *phonelab
 			}
 		}
 
-		var fileInfo *phonelab.StitchFileInfo
-
-		cleanup := func() {
-			if err = cur_file_writer.Flush(); err != nil {
-				log.Fatalf("Failed writer flush: %v: %v", cur_filename, err)
-			}
-			if err = cur_file_writer.Close(); err != nil {
-				log.Fatalf("Failed writer close: %v: %v", cur_filename, err)
-			}
-			if err = cur_file.Close(); err != nil {
-				log.Fatalf("Failed file close: %v: %v", cur_filename, err)
-			}
-			basename := path.Base(cur_filename)
-			info.BootInfo[boot_id][basename] = fileInfo
-		}
-
 		first_file := true
 		for {
 			if cur_line_count == 0 {
@@ -327,7 +412,7 @@ func doNWayMerge(devicePath string, chunkMap map[string][]string, info *phonelab
 					log.Fatalf("Could not open: %v, %v", cur_filename, err)
 					return
 				}
-				if cur_file_writer, err = cur_file.Writer(0); err != nil {
+				if cur_file_writer, err = cur_file.Writer(1048576); err != nil {
 					log.Fatalf("Could not get writer: %v: %v", cur_filename, err)
 				}
 			}
@@ -377,23 +462,41 @@ func doNWayMerge(devicePath string, chunkMap map[string][]string, info *phonelab
 		keys[idx] = k
 		idx++
 	}
+
+	fs := SortParams.FSInterface
 	sort.Sort(sort.StringSlice(keys))
 	for idx, key := range keys {
-		chunks := chunkMap[key]
-		localOutChan, err := extsort.NWayMergeGenerator(chunks, SortParams)
-		if err != nil {
-			log.Fatalf("%v", err)
-		}
-		for {
-			si, ok := <-localOutChan
-			if !ok {
-				break
-			}
-			logline, ok := si.(*SortableLogline)
-			if !ok {
-				log.Fatalf("Could not convert to logline: \n%v\n%v", si.String(), err)
-			}
+		log.Infof("keys[%v]=%v", idx, key)
+	}
 
+	// First, do n-way merge in parallel on all input files
+	// Then, read files in order and send them to various boot IDs
+
+	// Now read the .sorted files in order
+	for idx, key := range keys {
+		sortedFile := fmt.Sprintf("%s.sorted.gz", key)
+		f, err := fs.Open(sortedFile, os.O_RDONLY, easyfiles.GZ_TRUE)
+		if err != nil {
+			log.Fatalf("Failed to open '%v': %v", sortedFile, err)
+		}
+		reader, err := f.RawReader()
+		if err != nil {
+			log.Fatalf("Failed to read '%v': %v", sortedFile, err)
+		}
+		decoder := msgpack.NewDecoder(reader)
+		for {
+			var sl SortableLogline
+			err := decoder.Decode(&sl)
+			if err != nil {
+				if strings.Compare("EOF", err.Error()) == 0 {
+					// EOF
+					break
+				} else {
+					log.Fatalf("Failed to decode from '%v': %v", sortedFile, err)
+				}
+			}
+			ll := phonelab.Logline(sl)
+			logline := &ll
 			boot_id := logline.BootId
 			// Check if the map has this bootid.
 			if _, ok := bootid_channel_map[boot_id]; !ok {
@@ -407,7 +510,7 @@ func doNWayMerge(devicePath string, chunkMap map[string][]string, info *phonelab
 				}
 
 				// Add it in and create a consumer
-				bootid_channel_map[boot_id] = make(chan *SortableLogline, 10)
+				bootid_channel_map[boot_id] = make(chan *phonelab.Logline, 10000)
 				wg.Add(1)
 				go boot_id_consumer(boot_id, bootid_channel_map[boot_id], &wg)
 			}
@@ -415,7 +518,11 @@ func doNWayMerge(devicePath string, chunkMap map[string][]string, info *phonelab
 			bootid_channel_map[boot_id] <- logline
 			linesWritten++
 		}
-		log.Infof("Finished processing: %d/%d", idx+1, len(keys))
+		if err = f.Close(); err != nil {
+			log.Fatalf("Failed to close file: %v", f.Path)
+		}
+		fs.Remove(sortedFile)
+		log.Infof("Finished processing %v: %d/%d", f.Path, idx+1, len(keys))
 	}
 
 	log.Infof("Cleaning up.. Wrote a total of %d lines", linesWritten)
