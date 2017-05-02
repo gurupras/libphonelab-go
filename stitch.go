@@ -205,12 +205,12 @@ func (s *StitchCollector) OnData(data interface{}, info phonelab.PipelineSourceI
 	if s.sem == nil {
 		s.sem = gsync.NewSem(16)
 	}
-	s.sem.P()
 	s.wg.Add(1)
+	s.sem.P()
 	go func() {
 		key := chunkData.File
-		defer s.sem.V()
 		defer s.wg.Done()
+		defer s.sem.V()
 		chunks := s.chunkMap[deviceId][key]
 		args := make(map[string]interface{})
 		args["channel_size"] = 10000
