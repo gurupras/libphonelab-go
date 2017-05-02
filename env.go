@@ -38,7 +38,10 @@ func InitEnv(env *phonelab.Environment) {
 
 	env.DataCollectors["stitch_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
 		c := &StitchCollector{}
-		c.chunkMap = make(map[string][]string)
+		c.chunkMap = make(map[string]map[string][]string)
+		c.StitchInfo = make(map[string]*phonelab.StitchInfo)
+		c.initialized = make(map[string]bool)
+		c.delete = make(map[string]bool)
 		c.outPath = kwargs["path"].(string)
 		return c
 	}
