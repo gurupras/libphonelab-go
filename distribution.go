@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/gurupras/go_cpuprof"
 	"github.com/gurupras/go_cpuprof/post_processing"
+	"github.com/shaseley/phonelab-go"
 )
 
 type Distribution struct {
@@ -17,7 +17,7 @@ type Distribution struct {
 	StartTime    *int64
 	LastTime     *int64
 	LastTemp     *int32
-	LastLogline  *cpuprof.Logline
+	LastLogline  *phonelab.Logline
 	Period       time.Duration
 	Distribution map[int32]int64
 	isFull       bool
