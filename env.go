@@ -92,4 +92,5 @@ func InitEnv(env *phonelab.Environment) {
 	// Parsers
 	env.RegisterParserGenerator("ThermaPlan->AlarmManagerService", alarms.NewDeliverAlarmsLockedParser)
 	env.RegisterParserGenerator("SurfaceFlinger", parsers.NewScreenStateParser)
+	env.RegisterParserGenerator("ThermaPlan->Wakelock", parsers.NewThermaPlanWakelockParser)
 }
