@@ -1,0 +1,45 @@
+data_collector:
+  name: "alarm_wakelock_cpu_collector"
+  args:
+    path: file:///phonelab/mobicom17-alarms/data
+    #path: hdfs://dirtydeeds.cse.buffalo.edu:9000/processed
+    #path http://dirtydeeds.cse.buffalo.edu:31442/upload
+    aggregate: false
+    compress: true
+    #hdfs_addr:
+
+source:
+  type: phonelab
+  #sources: ["/phonelab/mobicom17-alarms/data/ac23ab520925fca80ab4b451eb1451f3c0973f47/info.json"]
+  #sources: ["/processed/cb63cb9bb9ad1ea9fcfab53403820c7c084621ab/info.json"]
+  sources: ["/processed/1ead348f9487bd344881d4ef684c44429fafd237/info.json"]
+  args:
+    hdfs_addr: dirtydeeds.cse.buffalo.edu:9000
+    daterange: 20170425-20170429
+processors:
+  - name: alarm_wakelock_cpu_processor
+    has_logstream: true
+    parsers:
+      - "Kernel-Trace"
+      - "KernelPrintk"
+      - "ThermaPlan->AlarmManagerService"
+      - "ThermaPlan->WakeLock"
+      - "SurfaceFlinger"
+      - "Power-Battery-PhoneLab"
+# We cannot be using filters since there are missing loglines Uncomment these
+# once the missing logline problem has been corrected
+#    filters:
+#      - type: "simple"
+#        filter: "periodic_ctx"
+#      - type: "simple"
+#        filter: "cpu_frequency:"
+#      - type: "simple"
+#        filter: "sched_cpu_hotplug:"
+#      - type: "simple"
+#        filter: "deliverAlarmsLocked()"
+#      - type: "regex"
+#        filter: "KernelPrintk.*PM:"
+
+
+sink:
+  name: alarm_wakelock_cpu_processor

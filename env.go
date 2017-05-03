@@ -56,6 +56,17 @@ func InitEnv(env *phonelab.Environment) {
 		c.outPath = path
 		return c
 	}
+	env.DataCollectors["alarm_wakelock_cpu_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
+		c := &AlarmWakelockCpuCollector{}
+		path := kwargs["path"].(string)
+		serializer, err := serialize.DetectSerializer(path)
+		if err != nil {
+			panic(err)
+		}
+		c.Serializer = serializer
+		c.outPath = path
+		return c
+	}
 	env.DataCollectors["screen_off_cpu_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
 		c := &ScreenOffCpuCollector{}
 		path := kwargs["path"].(string)
@@ -84,6 +95,7 @@ func InitEnv(env *phonelab.Environment) {
 	env.Processors["tag_count_processor"] = &TagCountProcGenerator{}
 	env.Processors["alarm_temp_processor"] = &AlarmTempProcGenerator{}
 	env.Processors["alarm_cpu_processor"] = &AlarmCpuProcGenerator{}
+	env.Processors["alarm_wakelock_cpu_processor"] = &AlarmWakelockCpuProcGenerator{}
 	env.Processors["alarms_per_device_day_processor"] = &AlarmsPerDDProcGenerator{}
 	env.Processors["screen_off_cpu_processor"] = &ScreenOffCpuProcGenerator{}
 	env.Processors["stitch_processor"] = &StitchGenerator{}
@@ -92,5 +104,5 @@ func InitEnv(env *phonelab.Environment) {
 	// Parsers
 	env.RegisterParserGenerator("ThermaPlan->AlarmManagerService", alarms.NewDeliverAlarmsLockedParser)
 	env.RegisterParserGenerator("SurfaceFlinger", parsers.NewScreenStateParser)
-	env.RegisterParserGenerator("ThermaPlan->Wakelock", parsers.NewThermaPlanWakelockParser)
+	env.RegisterParserGenerator("ThermaPlan->WakeLock", parsers.NewThermaPlanWakelockParser)
 }
