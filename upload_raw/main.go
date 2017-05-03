@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sync"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/alecthomas/kingpin"
 	"github.com/bmatcuk/doublestar"
 	"github.com/colinmarc/hdfs"
+	"github.com/gurupras/go-easyfiles/easyhdfs"
 	"github.com/gurupras/gocommons/gsync"
 	log "github.com/sirupsen/logrus"
 )
@@ -61,6 +63,8 @@ func main() {
 	sem := gsync.NewSem(16)
 	wg := sync.WaitGroup{}
 
+	fs := easyhdfs.NewHDFSFileSystem(*hdfsAddr)
+
 	for _, file := range sourceFiles {
 		sem.P()
 		wg.Add(1)
@@ -74,6 +78,9 @@ func main() {
 			outputPath := filepath.Join(*outPath, relativePath)
 			if newer, reason := isNewer(file, outputPath, client); newer {
 				log.Infof("Copying '%v' -> '%v' (%v)", file, outputPath, reason)
+				dir := path.Dir(outputPath)
+				fs.Makedirs(dir)
+
 				err := client.CopyToRemote(file, outputPath)
 				if err != nil {
 					log.Fatalf("Failed to copy to remote: %v", err)
