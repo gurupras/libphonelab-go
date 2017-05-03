@@ -142,7 +142,7 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 					alarmSet.Add(alarmTempData)
 				}
 			default:
-				log.Fatalf("Unknown line: %v", ll.Line)
+				log.Warnf("Unknown line: %v", ll.Line)
 			}
 		}
 	}()
