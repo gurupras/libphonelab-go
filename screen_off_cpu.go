@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gurupras/gocommons/gsync"
 	"github.com/gurupras/libphonelab-go/parsers"
 	"github.com/gurupras/libphonelab-go/trackers"
 	"github.com/shaseley/phonelab-go"
@@ -210,6 +211,7 @@ func (p *ScreenOffCpuProcessor) Process() <-chan interface{} {
 type ScreenOffCpuCollector struct {
 	sync.Mutex
 	wg sync.WaitGroup
+	*gsync.Semaphore
 	serialize.Serializer
 	outPath       string
 	deviceDateMap map[string]map[string]*ScreenOffCpuData
@@ -218,8 +220,10 @@ type ScreenOffCpuCollector struct {
 
 func (c *ScreenOffCpuCollector) OnData(data interface{}, info phonelab.PipelineSourceInfo) {
 	c.wg.Add(1)
+	c.P()
 	go func() {
 		defer c.wg.Done()
+		defer c.V()
 		r := data.(*ScreenOffCpuData)
 
 		sourceInfo := info.(*phonelab.PhonelabSourceInfo)

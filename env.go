@@ -1,6 +1,7 @@
 package libphonelab
 
 import (
+	"github.com/gurupras/gocommons/gsync"
 	"github.com/gurupras/libphonelab-go/alarms"
 	"github.com/gurupras/libphonelab-go/parsers"
 	"github.com/shaseley/phonelab-go"
@@ -33,6 +34,21 @@ func InitEnv(env *phonelab.Environment) {
 		log.Debugf("Got serializer: %t", serializer)
 		c.Serializer = serializer
 		c.outPath = path
+		c.Semaphore = gsync.NewSem(100)
+		return c
+	}
+	env.DataCollectors["alarm_trigger_temp_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
+		c := &AlarmTriggerTempCollector{}
+		path := kwargs["path"].(string)
+		serializer, err := serialize.DetectSerializer(path)
+		if err != nil {
+			panic(err)
+		}
+		log.Debugf("Got serializer: %t", serializer)
+		c.Serializer = serializer
+		c.outPath = path
+		c.Semaphore = gsync.NewSem(100)
+		c.deviceMap = make(map[string]map[string]int32)
 		return c
 	}
 
@@ -65,6 +81,7 @@ func InitEnv(env *phonelab.Environment) {
 		}
 		c.Serializer = serializer
 		c.outPath = path
+		c.Semaphore = gsync.NewSem(100)
 		return c
 	}
 	env.DataCollectors["screen_off_cpu_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
@@ -94,6 +111,7 @@ func InitEnv(env *phonelab.Environment) {
 
 	env.Processors["tag_count_processor"] = &TagCountProcGenerator{}
 	env.Processors["alarm_temp_processor"] = &AlarmTempProcGenerator{}
+	env.Processors["alarm_trigger_temp_processor"] = &AlarmTriggerTempProcGenerator{}
 	env.Processors["alarm_cpu_processor"] = &AlarmCpuProcGenerator{}
 	env.Processors["alarm_wakelock_cpu_processor"] = &AlarmWakelockCpuProcGenerator{}
 	env.Processors["alarms_per_device_day_processor"] = &AlarmsPerDDProcGenerator{}

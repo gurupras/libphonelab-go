@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/fatih/set"
+	"github.com/gurupras/gocommons/gsync"
 	"github.com/gurupras/libphonelab-go/alarms"
 	"github.com/gurupras/libphonelab-go/parsers"
 	"github.com/gurupras/libphonelab-go/trackers"
@@ -57,7 +58,7 @@ func (p *AlarmWakelockCpuProcessor) Process() <-chan interface{} {
 		processSet = set.NewNonTS()
 	}
 
-	loglineDistribution := NewAbstractDistribution(nil, 5*time.Hour)
+	loglineDistribution := NewAbstractDistribution(nil, 8*time.Hour)
 
 	tracker := trackers.New()
 	missingLoglinesTracker := trackers.NewMissingLoglinesTracker(tracker)
@@ -246,6 +247,7 @@ type AlarmWakelockCpuCollector struct {
 	Serializer serialize.Serializer
 	wg         sync.WaitGroup
 	durations  []int64
+	*gsync.Semaphore
 }
 
 func __avg(slice []int64) float64 {
@@ -258,8 +260,10 @@ func __avg(slice []int64) float64 {
 
 func (c *AlarmWakelockCpuCollector) OnData(data interface{}, info phonelab.PipelineSourceInfo) {
 	c.wg.Add(1)
+	c.P()
 	go func() {
 		defer c.wg.Done()
+		defer c.V()
 		r := data.(*AlarmBusynessData)
 
 		c.Lock()

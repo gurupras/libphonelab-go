@@ -18,39 +18,35 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type AlarmTempProcGenerator struct{}
+type AlarmTriggerTempProcGenerator struct{}
 
-func (t *AlarmTempProcGenerator) GenerateProcessor(source *phonelab.PipelineSourceInstance,
+func (t *AlarmTriggerTempProcGenerator) GenerateProcessor(source *phonelab.PipelineSourceInstance,
 	kwargs map[string]interface{}) phonelab.Processor {
-	return &AlarmTempProcessor{
+	return &AlarmTriggerTempProcessor{
 		Source: source.Processor,
 		Info:   source.Info,
 	}
 }
 
-type AlarmTempProcessor struct {
+type AlarmTriggerTempProcessor struct {
 	Source phonelab.Processor
 	Info   phonelab.PipelineSourceInfo
 }
 
-var distributionMap = make(map[string]*Distribution)
-var distributionMapLock = sync.Mutex{}
+var att_distributionMap = make(map[string]*Distribution)
+var att_distributionMapLock = sync.Mutex{}
 
-type AlarmTempData struct {
+type AlarmTriggerTempData struct {
 	*alarms.DeliverAlarmsLocked
-	Temps       []int32
-	Timestamps  []int64
 	TriggerTemp int32
 }
 
-func NewAlarmTempData() *AlarmTempData {
-	atd := &AlarmTempData{}
-	atd.Temps = make([]int32, 0)
-	atd.Timestamps = make([]int64, 0)
+func NewAlarmTriggerTempData() *AlarmTriggerTempData {
+	atd := &AlarmTriggerTempData{}
 	return atd
 }
 
-func (p *AlarmTempProcessor) Process() <-chan interface{} {
+func (p *AlarmTriggerTempProcessor) Process() <-chan interface{} {
 	outChan := make(chan interface{})
 
 	uid := fmt.Sprintf("%v->%v", p.Info.Context())
@@ -76,10 +72,10 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 				temp := int32(tt.Temp)
 				timestamp := ll.Datetime.UnixNano()
 				if distribution == nil {
-					distributionMapLock.Lock()
-					distributionMap[uid] = NewDistribution(nil, 24*time.Hour)
-					distribution = distributionMap[uid]
-					distributionMapLock.Unlock()
+					att_distributionMapLock.Lock()
+					att_distributionMap[uid] = NewDistribution(nil, 24*time.Hour)
+					distribution = att_distributionMap[uid]
+					att_distributionMapLock.Unlock()
 				}
 
 				// Update the distribution
@@ -93,7 +89,7 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 					wg.Add(1)
 					go func(obj interface{}) {
 						defer wg.Done()
-						alarm := obj.(*AlarmTempData)
+						alarm := obj.(*AlarmTriggerTempData)
 						if timestamp > alarm.MaxWhenRtc {
 							alarmSet.Remove(obj)
 							// Add all the temperatures for this alarm and ship it out
@@ -121,8 +117,6 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 							} else {
 								alarm.TriggerTemp = distribution.Temps[idx]
 							}
-							alarm.Temps = append(alarm.Temps, distribution.Temps[startIdx:]...)
-							alarm.Timestamps = append(alarm.Timestamps, distribution.Timestamps[startIdx:]...)
 							outChan <- alarm
 						}
 					}(obj)
@@ -138,7 +132,7 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 				}
 				if distribution != nil && distribution.IsFull() {
 					// Add this alarm to the alarm set
-					alarmTempData := NewAlarmTempData()
+					alarmTempData := NewAlarmTriggerTempData()
 					alarmTempData.DeliverAlarmsLocked = deliverAlarm
 					alarmSet.Add(alarmTempData)
 				}
@@ -146,28 +140,29 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 				log.Warnf("Unknown line: %v", ll.Line)
 			}
 		}
-		distributionMapLock.Lock()
-		delete(distributionMap, uid)
-		distributionMapLock.Unlock()
+		att_distributionMapLock.Lock()
+		delete(att_distributionMap, uid)
+		att_distributionMapLock.Unlock()
 	}()
 	return outChan
 }
 
-type AlarmTempCollector struct {
+type AlarmTriggerTempCollector struct {
 	sync.Mutex
 	outPath    string
 	Serializer serialize.Serializer
 	wg         sync.WaitGroup
+	deviceMap  map[string]map[string]int32
 	*gsync.Semaphore
 }
 
-func (c *AlarmTempCollector) OnData(data interface{}, info phonelab.PipelineSourceInfo) {
+func (c *AlarmTriggerTempCollector) OnData(data interface{}, info phonelab.PipelineSourceInfo) {
 	c.wg.Add(1)
 	c.P()
 	go func() {
 		defer c.wg.Done()
 		defer c.V()
-		r := data.(*AlarmTempData)
+		r := data.(*AlarmTriggerTempData)
 		sourceInfo := info.(*phonelab.PhonelabSourceInfo)
 		deviceId := sourceInfo.DeviceId
 
@@ -175,28 +170,31 @@ func (c *AlarmTempCollector) OnData(data interface{}, info phonelab.PipelineSour
 		io.WriteString(h, r.DeliverAlarmsLocked.Logline.Line)
 		checksum := fmt.Sprintf("%x", h.Sum(nil))
 
-		// XXX: Hack. Set Logline.Payload = nil
-		// Otherwise, Logline.Payload refers to
-		// deliverAlarmsLocked -> Logline -> deliverAlarmsLocked ->
-		// you see where this is going
-		r.DeliverAlarmsLocked.Logline.Payload = nil
+		c.Lock()
+		if c.deviceMap[deviceId] == nil {
+			c.deviceMap[deviceId] = make(map[string]int32)
+		}
+		c.deviceMap[deviceId][checksum] = r.TriggerTemp
+		c.Unlock()
+	}()
+}
 
+func (c *AlarmTriggerTempCollector) Finish() {
+	// Nothing to do here
+	c.wg.Wait()
+
+	for deviceId, data := range c.deviceMap {
 		u, err := url.Parse(c.outPath)
 		if err != nil {
 			log.Fatalf("Failed to parse URL from string: %v: %v", c.outPath, err)
 		}
-		u.Path = filepath.Join(u.Path, deviceId, "analysis", "alarm_temp", fmt.Sprintf("%v.gz", checksum))
+		u.Path = filepath.Join(u.Path, deviceId, "analysis", "alarm_trigger_temp.gz")
 		filename := u.String()
 
 		log.Infof("Serializing filename=%v", filename)
-		err = c.Serializer.Serialize(r, filename)
+		err = c.Serializer.Serialize(data, filename)
 		if err != nil {
 			log.Fatalf("Failed to serialize: %v", err)
 		}
-	}()
-}
-
-func (c *AlarmTempCollector) Finish() {
-	// Nothing to do here
-	c.wg.Wait()
+	}
 }
