@@ -179,7 +179,7 @@ func (p *AlarmCpuProcessor) Process() <-chan interface{} {
 	return outChan
 }
 
-type AlarmSuspendData struct {
+type AlarmBusynessData struct {
 	DeviceId string
 	*alarms.DeliverAlarmsLocked
 	Busyness  map[string][]float64
@@ -228,7 +228,7 @@ func processSuspend(deviceId string, sData *SuspendData, loglines []interface{},
 		alarmMap[alarm.AppPid] = append(alarmMap[alarm.AppPid], alarm)
 	}
 
-	data := make(map[*alarms.DeliverAlarmsLocked]*AlarmSuspendData)
+	data := make(map[*alarms.DeliverAlarmsLocked]*AlarmBusynessData)
 	lastInfo := make(map[*alarms.DeliverAlarmsLocked]time.Time)
 
 	tracker := trackers.New()
@@ -240,7 +240,7 @@ func processSuspend(deviceId string, sData *SuspendData, loglines []interface{},
 			if pids.Has(info.Tgid) {
 				for _, alarm := range alarmMap[info.Tgid] {
 					if _, ok := data[alarm]; !ok {
-						data[alarm] = &AlarmSuspendData{}
+						data[alarm] = &AlarmBusynessData{}
 						data[alarm].DeviceId = deviceId
 						data[alarm].DeliverAlarmsLocked = alarm
 						data[alarm].Busyness = make(map[string][]float64)
@@ -299,7 +299,7 @@ type fileContext struct {
 
 func (c *AlarmCpuCollector) OnData(data interface{}, info phonelab.PipelineSourceInfo) {
 	go func() {
-		r := data.(*AlarmSuspendData)
+		r := data.(*AlarmBusynessData)
 
 		sourceInfo := info.(*phonelab.PhonelabSourceInfo)
 		deviceId := sourceInfo.DeviceId
