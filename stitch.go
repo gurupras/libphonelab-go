@@ -1,9 +1,11 @@
 package libphonelab
 
 import (
+	"crypto/md5"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -15,6 +17,7 @@ import (
 
 	"gopkg.in/vmihailenco/msgpack.v2"
 
+	"github.com/fatih/set"
 	"github.com/gurupras/go-easyfiles"
 	"github.com/gurupras/go-external-sort"
 	"github.com/gurupras/gocommons/gsync"
@@ -229,6 +232,8 @@ func (s *StitchCollector) OnData(data interface{}, info phonelab.PipelineSourceI
 		if err != nil {
 			log.Fatalf("Failed to get writer to '%v': %v", sortedFile, err)
 		}
+
+		checksums := set.NewNonTS()
 		for {
 			si, ok := <-localOutChan
 			if !ok {
@@ -238,6 +243,16 @@ func (s *StitchCollector) OnData(data interface{}, info phonelab.PipelineSourceI
 			if !ok {
 				log.Fatalf("Could not convert to logline: \n%v\n%v", si.String(), err)
 			}
+
+			h := md5.New()
+			io.WriteString(h, logline.Line)
+			checksum := fmt.Sprintf("%x", h.Sum(nil))
+			if checksums.Has(checksum) {
+				// ignore
+				continue
+			}
+			checksums.Add(checksum)
+
 			b, err := msgpack.Marshal(logline)
 			if err != nil {
 				log.Fatalf("Failed to marshal: %v", err)
