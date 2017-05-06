@@ -137,11 +137,11 @@ func (p *StitchProcessor) Process() <-chan interface{} {
 			//	log.Fatalf("Failed to get a file from channel. Got: \n%v\n", obj)
 			//}
 			file := obj.(string)
-			sem.P()
 			wg.Add(1)
+			sem.P()
 			go func(file string) {
-				defer sem.V()
 				defer wg.Done()
+				defer sem.V()
 				log.Infof("Processing file=%v", file)
 				// Call external sort on this
 				bufsize := 64 * 1048576
@@ -206,7 +206,7 @@ func (s *StitchCollector) OnData(data interface{}, info phonelab.PipelineSourceI
 	s.chunkMap[deviceId][chunkData.File] = chunkData.Chunks
 
 	if s.sem == nil {
-		s.sem = gsync.NewSem(16)
+		s.sem = gsync.NewSem(8)
 	}
 	s.wg.Add(1)
 	s.sem.P()
@@ -216,7 +216,7 @@ func (s *StitchCollector) OnData(data interface{}, info phonelab.PipelineSourceI
 		defer s.sem.V()
 		chunks := s.chunkMap[deviceId][key]
 		args := make(map[string]interface{})
-		args["channel_size"] = 10000
+		args["channel_size"] = 100
 		localOutChan, err := extsort.NWayMergeGenerator(chunks, SortParams, args)
 		if err != nil {
 			log.Fatalf("%v", err)
@@ -525,7 +525,7 @@ func doNWayMerge(devicePath string, chunkMap map[string][]string, info *phonelab
 				}
 
 				// Add it in and create a consumer
-				bootid_channel_map[boot_id] = make(chan *phonelab.Logline, 10000)
+				bootid_channel_map[boot_id] = make(chan *phonelab.Logline, 1000)
 				wg.Add(1)
 				go boot_id_consumer(boot_id, bootid_channel_map[boot_id], &wg)
 			}
