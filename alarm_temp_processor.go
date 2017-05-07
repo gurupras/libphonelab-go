@@ -54,7 +54,11 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 	outChan := make(chan interface{}, 100)
 
 	uid := fmt.Sprintf("%v", p.Info.Context())
-	log.Infof("Processing: %v", uid)
+	//log.Infof("Processing: %v", uid)
+	sourceInfo := p.Info.(*phonelab.PhonelabSourceInfo)
+	deviceId := sourceInfo.DeviceId
+	total := len(sourceInfo.BootIds())
+	finished := uint32(0)
 
 	whenTempSkipped := uint32(0)
 	triggerTempSkipped := uint32(0)
@@ -63,6 +67,7 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 	go func() {
 		defer close(outChan)
 		defer atMaxConcurrentSem.V()
+		defer log.Infof("%v: %d/%d", deviceId, atomic.AddUint32(&finished, 1), total)
 
 		alarmSet := set.New()
 		var distribution *Distribution
