@@ -49,6 +49,8 @@ func NewAlarmTempData() *AlarmTempData {
 }
 
 var atMaxConcurrentSem = gsync.NewSem(8)
+var atDeviceMapLock sync.Mutex
+var atDeviceMap = make(map[string]map[string]interface{})
 
 func (p *AlarmTempProcessor) Process() <-chan interface{} {
 	outChan := make(chan interface{}, 100)
@@ -58,7 +60,14 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 	sourceInfo := p.Info.(*phonelab.PhonelabSourceInfo)
 	deviceId := sourceInfo.DeviceId
 	total := len(sourceInfo.BootIds())
-	finished := uint32(0)
+	atDeviceMapLock.Lock()
+	if _, ok := atDeviceMap[deviceId]; !ok {
+		atDeviceMap[deviceId] = make(map[string]interface{})
+		atDeviceMap[deviceId]["total"] = total
+		finished := uint32(0)
+		atDeviceMap[deviceId]["finished"] = &finished
+	}
+	atDeviceMapLock.Unlock()
 
 	whenTempSkipped := uint32(0)
 	triggerTempSkipped := uint32(0)
@@ -67,7 +76,7 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 	go func() {
 		defer close(outChan)
 		defer atMaxConcurrentSem.V()
-		defer log.Infof("%v: %d/%d", deviceId, atomic.AddUint32(&finished, 1), total)
+		defer log.Infof("%v: %d/%d", deviceId, atomic.AddUint32(atDeviceMap[deviceId]["finished"].(*uint32), 1), total)
 
 		alarmSet := set.New()
 		var distribution *Distribution
