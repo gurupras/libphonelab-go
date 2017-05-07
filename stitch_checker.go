@@ -7,7 +7,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/fatih/set"
 	"github.com/shaseley/phonelab-go"
 	log "github.com/sirupsen/logrus"
 )
@@ -50,12 +49,12 @@ func (p *StitchCheckerProcessor) Process() <-chan interface{} {
 	data.DeviceId = sourceInfo.DeviceId
 	data.BootId = sourceInfo.BootId
 
-	checksums := set.New()
-	ch := make(map[string]struct{})
-
 	var lastLogcatToken int64
 	go func() {
 		defer close(outChan)
+
+		lastChecksum := ""
+
 		inChan := p.Source.Process()
 		for obj := range inChan {
 			ll, ok := obj.(*phonelab.Logline)
@@ -67,17 +66,12 @@ func (p *StitchCheckerProcessor) Process() <-chan interface{} {
 			h := md5.New()
 			io.WriteString(h, ll.Line)
 			checksum := fmt.Sprintf("%x", h.Sum(nil))
-			if _, ok := ch[checksum]; ok {
+			if strings.Compare(lastChecksum, checksum) == 0 {
 				log.Errorf("%v->%v Duplicate logline: \n%v", data.DeviceId, data.BootId, ll.Line)
-				log.Infof("Checksum: %v", checksum)
-				for idx, obj := range checksums.List() {
-					log.Infof("list[%d]=%v", idx, obj)
-				}
 				data.DuplicateLoglineFail = true
 				break
 			}
-			checksums.Add(checksum)
-			ch[checksum] = struct{}{}
+			lastChecksum = checksum
 
 			if strings.Compare(ll.BootId, data.BootId) != 0 {
 				if !data.BootIdFail {

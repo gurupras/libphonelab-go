@@ -17,7 +17,6 @@ import (
 
 	"gopkg.in/vmihailenco/msgpack.v2"
 
-	"github.com/fatih/set"
 	"github.com/gurupras/go-easyfiles"
 	"github.com/gurupras/go-external-sort"
 	"github.com/gurupras/gocommons/gsync"
@@ -233,7 +232,9 @@ func (s *StitchCollector) OnData(data interface{}, info phonelab.PipelineSourceI
 			log.Fatalf("Failed to get writer to '%v': %v", sortedFile, err)
 		}
 
-		checksums := set.NewNonTS()
+		// n-way-merge guarantees duplicate lines will appear one after
+		// another. So we only need to keep track of the last checksum.
+		lastChecksum := ""
 		for {
 			si, ok := <-localOutChan
 			if !ok {
@@ -247,11 +248,11 @@ func (s *StitchCollector) OnData(data interface{}, info phonelab.PipelineSourceI
 			h := md5.New()
 			io.WriteString(h, logline.Line)
 			checksum := fmt.Sprintf("%x", h.Sum(nil))
-			if checksums.Has(checksum) {
+			if strings.Compare(lastChecksum, checksum) == 0 {
 				// ignore
 				continue
 			}
-			checksums.Add(checksum)
+			lastChecksum = checksum
 
 			b, err := msgpack.Marshal(logline)
 			if err != nil {
