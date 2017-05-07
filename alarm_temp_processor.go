@@ -4,7 +4,6 @@ import (
 	"crypto/md5"
 	"fmt"
 	"io"
-	"net/url"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -14,7 +13,6 @@ import (
 	"github.com/gurupras/gocommons/gsync"
 	"github.com/gurupras/libphonelab-go/alarms"
 	"github.com/shaseley/phonelab-go"
-	"github.com/shaseley/phonelab-go/serialize"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -51,7 +49,7 @@ func NewAlarmTempData() *AlarmTempData {
 }
 
 func (p *AlarmTempProcessor) Process() <-chan interface{} {
-	outChan := make(chan interface{})
+	outChan := make(chan interface{}, 100)
 
 	uid := fmt.Sprintf("%v->%v", p.Info.Context())
 
@@ -155,9 +153,9 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 
 type AlarmTempCollector struct {
 	sync.Mutex
-	outPath    string
-	Serializer serialize.Serializer
-	wg         sync.WaitGroup
+	outPath string
+	wg      sync.WaitGroup
+	*phonelab.DefaultCollector
 	*gsync.Semaphore
 }
 
@@ -181,18 +179,9 @@ func (c *AlarmTempCollector) OnData(data interface{}, info phonelab.PipelineSour
 		// you see where this is going
 		r.DeliverAlarmsLocked.Logline.Payload = nil
 
-		u, err := url.Parse(c.outPath)
-		if err != nil {
-			log.Fatalf("Failed to parse URL from string: %v: %v", c.outPath, err)
-		}
-		u.Path = filepath.Join(u.Path, deviceId, "analysis", "alarm_temp", fmt.Sprintf("%v.gz", checksum))
-		filename := u.String()
-
-		log.Infof("Serializing filename=%v", filename)
-		err = c.Serializer.Serialize(r, filename)
-		if err != nil {
-			log.Fatalf("Failed to serialize: %v", err)
-		}
+		path := filepath.Join(deviceId, "analysis", "alarm_temp", fmt.Sprintf("%v.gz", checksum))
+		info := &CustomInfo{path, "custom"}
+		c.DefaultCollector.OnData(data, info)
 	}()
 }
 

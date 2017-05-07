@@ -27,7 +27,7 @@ type AlarmResult struct {
 }
 
 func (p *AlarmProcessor) Process() <-chan interface{} {
-	outChan := make(chan interface{})
+	outChan := make(chan interface{}, 100)
 
 	go func() {
 		defer close(outChan)
@@ -43,7 +43,7 @@ func (p *AlarmProcessor) Process() <-chan interface{} {
 				if err != nil {
 					log.Errorf("Failed to parse deliverAlarm: %v", err)
 				}
-				if deliverAlarm != nil {
+				if deliverAlarm != nil && deliverAlarm.WindowLength != 0 {
 					outChan <- &AlarmResult{deliverAlarm, p.Info}
 				}
 			}

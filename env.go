@@ -1,6 +1,8 @@
 package libphonelab
 
 import (
+	"fmt"
+
 	"github.com/gurupras/gocommons/gsync"
 	"github.com/gurupras/libphonelab-go/alarms"
 	"github.com/gurupras/libphonelab-go/parsers"
@@ -26,14 +28,11 @@ func InitEnv(env *phonelab.Environment) {
 	*/
 	env.DataCollectors["alarm_temp_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
 		c := &AlarmTempCollector{}
-		path := kwargs["path"].(string)
-		serializer, err := serialize.DetectSerializer(path)
+		d, err := phonelab.NewDefaultCollector(kwargs)
 		if err != nil {
-			panic(err)
+			panic(fmt.Sprintf("%v", err))
 		}
-		log.Debugf("Got serializer: %t", serializer)
-		c.Serializer = serializer
-		c.outPath = path
+		c.DefaultCollector = d.(*phonelab.DefaultCollector)
 		c.Semaphore = gsync.NewSem(100)
 		return c
 	}
