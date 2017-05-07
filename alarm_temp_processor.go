@@ -52,6 +52,7 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 	outChan := make(chan interface{}, 100)
 
 	uid := fmt.Sprintf("%v->%v", p.Info.Context())
+	log.Infof("Processing: %v", uid)
 
 	whenTempSkipped := uint32(0)
 	triggerTempSkipped := uint32(0)
