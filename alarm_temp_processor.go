@@ -77,7 +77,6 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 	go func() {
 		defer close(outChan)
 		defer atMaxConcurrentSem.V()
-		defer log.Infof("%v->%v: %d/%d", deviceId, bootId, atomic.AddUint32(atDeviceMap[deviceId]["finished"].(*uint32), 1), total)
 
 		alarmSet := set.New()
 		var distribution *Distribution
@@ -167,6 +166,7 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 		distributionMapLock.Lock()
 		delete(distributionMap, uid)
 		distributionMapLock.Unlock()
+		log.Infof("%v->%v: %d/%d", deviceId, bootId, atomic.AddUint32(atDeviceMap[deviceId]["finished"].(*uint32), 1), total)
 	}()
 	return outChan
 }
