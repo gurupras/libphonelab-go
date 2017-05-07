@@ -48,6 +48,8 @@ func NewAlarmTempData() *AlarmTempData {
 	return atd
 }
 
+var atMaxConcurrentSem = gsync.NewSem(8)
+
 func (p *AlarmTempProcessor) Process() <-chan interface{} {
 	outChan := make(chan interface{}, 100)
 
@@ -57,8 +59,10 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 	whenTempSkipped := uint32(0)
 	triggerTempSkipped := uint32(0)
 
+	atMaxConcurrentSem.P()
 	go func() {
 		defer close(outChan)
+		defer atMaxConcurrentSem.V()
 
 		alarmSet := set.New()
 		var distribution *Distribution
