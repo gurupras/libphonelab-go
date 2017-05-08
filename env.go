@@ -107,6 +107,16 @@ func InitEnv(env *phonelab.Environment) {
 		c.outPath = path
 		return c
 	}
+	env.DataCollectors["temperature_distribution_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
+		c := &TDCollector{}
+		d, err := phonelab.NewDefaultCollector(kwargs)
+		if err != nil {
+			panic(fmt.Sprintf("%v", err))
+		}
+		c.DefaultCollector = d.(*phonelab.DefaultCollector)
+		c.TemperatureMap = make(map[string]map[string]int64)
+		return c
+	}
 
 	env.Processors["tag_count_processor"] = &TagCountProcGenerator{}
 	env.Processors["alarm_temp_processor"] = &AlarmTempProcGenerator{}
@@ -117,6 +127,7 @@ func InitEnv(env *phonelab.Environment) {
 	env.Processors["screen_off_cpu_processor"] = &ScreenOffCpuProcGenerator{}
 	env.Processors["stitch_processor"] = &StitchGenerator{}
 	env.Processors["stitch_checker_processor"] = &StitchCheckerProcGenerator{}
+	env.Processors["temperature_distribution_processor"] = &TDProcGenerator{}
 
 	// Parsers
 	env.RegisterParserGenerator("ThermaPlan->AlarmManagerService", alarms.NewDeliverAlarmsLockedParser)
