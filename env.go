@@ -97,14 +97,12 @@ func InitEnv(env *phonelab.Environment) {
 	}
 	env.DataCollectors["alarms_per_device_day_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
 		c := &AlarmsPerDDCollector{}
-		path := kwargs["path"].(string)
-		serializer, err := serialize.DetectSerializer(path)
+		d, err := phonelab.NewDefaultCollector(kwargs)
 		if err != nil {
-			panic(err)
+			panic(fmt.Sprintf("%v", err))
 		}
+		c.DefaultCollector = d.(*phonelab.DefaultCollector)
 		c.deviceDataMap = make(map[string]map[string]int64)
-		c.Serializer = serializer
-		c.outPath = path
 		return c
 	}
 	env.DataCollectors["temperature_distribution_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {

@@ -2,14 +2,12 @@ package libphonelab
 
 import (
 	"fmt"
-	"net/url"
 	"path/filepath"
 	"sync"
 
 	"github.com/gurupras/libphonelab-go/alarms"
 	"github.com/gurupras/libphonelab-go/trackers"
 	"github.com/shaseley/phonelab-go"
-	"github.com/shaseley/phonelab-go/serialize"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -77,10 +75,9 @@ func (p *AlarmsPerDDProcessor) Process() <-chan interface{} {
 }
 
 type AlarmsPerDDCollector struct {
+	*phonelab.DefaultCollector
 	sync.Mutex
-	outPath       string
 	deviceDataMap map[string]map[string]int64
-	Serializer    serialize.Serializer
 	wg            sync.WaitGroup
 }
 
@@ -109,18 +106,13 @@ func (c *AlarmsPerDDCollector) OnData(data interface{}, info phonelab.PipelineSo
 func (c *AlarmsPerDDCollector) Finish() {
 	c.wg.Wait()
 
+	c.wg.Add(len(c.deviceDataMap))
 	for deviceId := range c.deviceDataMap {
-		c.wg.Add(1)
 		go func(deviceId string) {
 			defer c.wg.Done()
-			u, err := url.Parse(c.outPath)
-			if err != nil {
-				log.Fatalf("Failed to parse URL from string: %v: %v", c.outPath, err)
-			}
-			u.Path = filepath.Join(u.Path, deviceId, "analysis", "alarms_per_device_day.gz")
-			filename := u.String()
-
-			c.Serializer.Serialize(c.deviceDataMap[deviceId], filename)
+			path := filepath.Join(deviceId, "analysis", "alarms_per_device_day")
+			info := &CustomInfo{path, "custom"}
+			c.DefaultCollector.OnData(c.deviceDataMap[deviceId], info)
 		}(deviceId)
 	}
 	c.wg.Wait()
