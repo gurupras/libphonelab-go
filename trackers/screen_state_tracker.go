@@ -38,6 +38,8 @@ func NewScreenStateTracker(tracker *Tracker) (screenStateTracker *ScreenStateTra
 			switch t.Mode {
 			case 0:
 				screenStateTracker.CurrentState = SCREEN_STATE_OFF
+			case 1:
+				fallthrough
 			case 2:
 				screenStateTracker.CurrentState = SCREEN_STATE_ON
 			default:
