@@ -1,0 +1,45 @@
+data_collector:
+  name: "stitch_collector"
+  args:
+    #path: "/phonelab/mobicom17-alarms/test-device/"
+    path: /processed/
+    #path http[s]://base/url
+    hdfs_addr: dirtydeeds.cse.buffalo.edu:9000
+
+source:
+  type: phonelab-raw
+  #sources: ["/phonelab/mobicom17-alarms/data/ac23ab520925fca80ab4b451eb1451f3c0973f47/info.json"]
+  #sources: ["/phonelab/mobicom17-alarms/test-device/d1308093f6d80737f5fbee63e6731ffe43fa2127/time"]
+  sources:
+    - '/raw/84fd059afbcdff5029f8fc710580dd5d8a650346/time'
+    - '/raw/db9eec0bc44b40234ebd07eda472eebad0a4e162/time'
+    - '/raw/8c4b69678a7cbdc557d4dd96d3e00b98c8bde5ad/time'
+    - '/raw/1111fce9d1c895c2bd62fd239cefd3b6b9e331ab/time'
+    - '/raw/b2f08e0c53e114f5807defb800b4c9df3098a716/time'
+    - '/raw/0894101efb1fd6a2b51e984b22d90efc81a89a20/time'
+    - '/raw/2e26b6d10e527ea93ee94ad093990725f9f690e6/time'
+    - '/raw/ee3bf6daf3c1ff8efba32f162ebd9fb65e0253d6/time'
+    - '/raw/ec582593a58387c173a1f2a8718434c0336d7ef3/time'
+    - '/raw/9ac0694f3b76efa6801131f19a749fbffa473c67/time'
+    - '/raw/8ec3ca340e00a034b14aecded7e15ae4f4685209/time'
+    - '/raw/29cb766c0185838be5bcd91d80a7455c2505d848/time'
+    - '/raw/eeaba1715a642bf0443cf571871de131871a6173/time'
+    - '/raw/9aa33cc6b9e1d870795286135b1a77453ff1a6b7/time'
+    - '/raw/c0a9d768595fc0d4889030fa02189c046d49aadc/time'
+    - '/raw/29c993dfcaa55a18acde24f59fdaf439600fcce0/time'
+    - '/raw/c8559b52cdcba4644bb686b1579d765da56482e3/time'
+    - '/raw/ac99683a2186c2edd3224cb5e2b08ec06360f75e/time'
+    - '/raw/fb7b47fad00c9ed7196c34d9a940e8cd21fd3ad9/time'
+    - '/raw/ea22963ac72b3176e864e65456b00667e24ab1de/time'
+    - '/raw/442efeb4330b8f5ccf20620e3e537e7ba579ffab/time'
+  args:
+    hdfs_addr: dirtydeeds.cse.buffalo.edu:9000
+    processed_path: /processed/
+    daterange: 20161201-20170501
+processors:
+  - name: stitch_processor
+    has_logstream: true
+    raw_strings: true
+
+sink:
+  name: stitch_processor

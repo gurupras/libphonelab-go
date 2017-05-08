@@ -12,9 +12,10 @@ source:
   type: phonelab
   #sources: ["/phonelab/mobicom17-alarms/data/ac23ab520925fca80ab4b451eb1451f3c0973f47/info.json"]
   #sources: ["/processed/cb63cb9bb9ad1ea9fcfab53403820c7c084621ab/info.json"]
-  sources: ["/processed/cb63cb9bb9ad1ea9fcfab53403820c7c084621ab/info.json"]
+  sources: ["/wakelock/processed/**/info.json"]
   args:
     hdfs_addr: dirtydeeds.cse.buffalo.edu:9000
+    daterange: 20170425-20170429
 processors:
   - name: screen_off_cpu_processor
     has_logstream: true
