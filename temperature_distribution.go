@@ -75,7 +75,9 @@ func (c *TDCollector) OnData(data interface{}, info phonelab.PipelineSourceInfo)
 	deviceId := sourceInfo.DeviceId
 
 	if _, ok := c.TemperatureMap[deviceId]; !ok {
+		c.Lock()
 		c.TemperatureMap[deviceId] = make(map[string]int64)
+		c.Unlock()
 	}
 	dMap := c.TemperatureMap[deviceId]
 	// Update the map
