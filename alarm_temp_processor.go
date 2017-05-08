@@ -173,8 +173,7 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 
 type AlarmTempCollector struct {
 	sync.Mutex
-	outPath string
-	wg      sync.WaitGroup
+	wg sync.WaitGroup
 	*phonelab.DefaultCollector
 	*gsync.Semaphore
 }
