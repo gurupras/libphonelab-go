@@ -199,7 +199,7 @@ func (c *AlarmTempCollector) OnData(data interface{}, info phonelab.PipelineSour
 		// you see where this is going
 		r.DeliverAlarmsLocked.Logline.Payload = nil
 
-		path := filepath.Join(deviceId, "analysis", "alarm_temp", fmt.Sprintf("%v.gz", checksum))
+		path := filepath.Join(deviceId, "analysis", "alarm_temp", fmt.Sprintf("%v", checksum))
 		info := &CustomInfo{path, "custom"}
 		c.DefaultCollector.OnData(data, info)
 	}()
