@@ -28,14 +28,14 @@ source:
 #    - '/processed/8ec3ca340e00a034b14aecded7e15ae4f4685209/info.json'
 #    - '/processed/29cb766c0185838be5bcd91d80a7455c2505d848/info.json'
 #    - '/processed/eeaba1715a642bf0443cf571871de131871a6173/info.json'
-    - '/processed/9aa33cc6b9e1d870795286135b1a77453ff1a6b7/info.json'
+#    - '/processed/9aa33cc6b9e1d870795286135b1a77453ff1a6b7/info.json'
 #    - '/processed/c0a9d768595fc0d4889030fa02189c046d49aadc/info.json'
 #    - '/processed/29c993dfcaa55a18acde24f59fdaf439600fcce0/info.json'
 #    - '/processed/c8559b52cdcba4644bb686b1579d765da56482e3/info.json'
 #    - '/processed/ac99683a2186c2edd3224cb5e2b08ec06360f75e/info.json'
 #    - '/processed/fb7b47fad00c9ed7196c34d9a940e8cd21fd3ad9/info.json'
 #    - '/processed/ea22963ac72b3176e864e65456b00667e24ab1de/info.json'
-#    - '/processed/442efeb4330b8f5ccf20620e3e537e7ba579ffab/info.json'
+    - '/processed/442efeb4330b8f5ccf20620e3e537e7ba579ffab/info.json'
   args:
     hdfs_addr: dirtydeeds.cse.buffalo.edu:9000
     daterange: 20161201-20170501
