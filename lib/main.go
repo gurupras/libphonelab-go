@@ -1,12 +1,12 @@
 package main
 
 import (
-	"log"
 	"os"
 
 	"github.com/gurupras/go-easyfiles"
 	"github.com/gurupras/libphonelab-go"
 	"github.com/shaseley/phonelab-go"
+	log "github.com/sirupsen/logrus"
 )
 
 func InitEnv(env *phonelab.Environment) {
@@ -24,6 +24,9 @@ func main() {
 		log.Fatal(err)
 	}
 	defer f.Close()
+
+	//log.SetLevel(log.DebugLevel)
+	log.Debugf("Starting...")
 
 	//pprof.StartCPUProfile(f)
 	//defer pprof.StopCPUProfile()
