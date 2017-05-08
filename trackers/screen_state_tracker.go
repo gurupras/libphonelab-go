@@ -41,7 +41,7 @@ func NewScreenStateTracker(tracker *Tracker) (screenStateTracker *ScreenStateTra
 			case 2:
 				screenStateTracker.CurrentState = SCREEN_STATE_ON
 			default:
-				log.Errorf("Received unknown screen state value: %v", t.Mode)
+				log.Errorf("Received unknown screen state value: %v last: %v", t.Mode, screenStateTracker.CurrentState)
 				return false
 			}
 			if screenStateTracker.Callback != nil {
