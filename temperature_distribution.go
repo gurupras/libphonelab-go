@@ -89,7 +89,7 @@ func (c *TDCollector) Finish() {
 	for deviceId := range c.TemperatureMap {
 		go func(deviceId string) {
 			defer c.wg.Done()
-			path := filepath.Join(deviceId, "analysis", "temp_distribution.gz")
+			path := filepath.Join(deviceId, "analysis", "temp_distribution")
 			info := &CustomInfo{path, "custom"}
 			c.DefaultCollector.OnData(c.TemperatureMap[deviceId], info)
 		}(deviceId)
