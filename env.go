@@ -62,37 +62,33 @@ func InitEnv(env *phonelab.Environment) {
 	}
 	env.DataCollectors["alarm_cpu_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
 		c := &AlarmCpuCollector{}
-		path := kwargs["path"].(string)
-		serializer, err := serialize.DetectSerializer(path)
+		d, err := phonelab.NewDefaultCollector(kwargs)
 		if err != nil {
-			panic(err)
+			panic(fmt.Sprintf("%v", err))
 		}
-		c.Serializer = serializer
-		c.outPath = path
+		c.DefaultCollector = d.(*phonelab.DefaultCollector)
+		c.Semaphore = gsync.NewSem(100)
 		return c
 	}
 	env.DataCollectors["alarm_wakelock_cpu_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
 		c := &AlarmWakelockCpuCollector{}
-		path := kwargs["path"].(string)
-		serializer, err := serialize.DetectSerializer(path)
+		d, err := phonelab.NewDefaultCollector(kwargs)
 		if err != nil {
-			panic(err)
+			panic(fmt.Sprintf("%v", err))
 		}
-		c.Serializer = serializer
-		c.outPath = path
+		c.DefaultCollector = d.(*phonelab.DefaultCollector)
 		c.Semaphore = gsync.NewSem(100)
 		return c
 	}
 	env.DataCollectors["screen_off_cpu_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
 		c := &ScreenOffCpuCollector{}
-		path := kwargs["path"].(string)
-		serializer, err := serialize.DetectSerializer(path)
+		d, err := phonelab.NewDefaultCollector(kwargs)
 		if err != nil {
-			panic(err)
+			panic(fmt.Sprintf("%v", err))
 		}
-		c.Serializer = serializer
-		c.outPath = path
+		c.DefaultCollector = d.(*phonelab.DefaultCollector)
 		c.deviceDateMap = make(map[string]map[string]*ScreenOffCpuData)
+		c.Semaphore = gsync.NewSem(10)
 		return c
 	}
 	env.DataCollectors["alarms_per_device_day_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {

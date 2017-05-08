@@ -4,17 +4,16 @@ import (
 	"crypto/md5"
 	"fmt"
 	"io"
-	"net/url"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/fatih/set"
+	"github.com/gurupras/gocommons/gsync"
 	"github.com/gurupras/libphonelab-go/alarms"
 	"github.com/gurupras/libphonelab-go/trackers"
 	"github.com/shaseley/phonelab-go"
-	"github.com/shaseley/phonelab-go/serialize"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -180,7 +179,6 @@ func (p *AlarmCpuProcessor) Process() <-chan interface{} {
 }
 
 type AlarmBusynessData struct {
-	DeviceId string
 	*alarms.DeliverAlarmsLocked
 	Busyness  map[string][]float64
 	Periods   map[string][]int64
@@ -241,7 +239,7 @@ func processSuspend(deviceId string, sData *SuspendData, loglines []interface{},
 				for _, alarm := range alarmMap[info.Tgid] {
 					if _, ok := data[alarm]; !ok {
 						data[alarm] = &AlarmBusynessData{}
-						data[alarm].DeviceId = deviceId
+						//data[alarm].DeviceId = deviceId
 						data[alarm].DeliverAlarmsLocked = alarm
 						data[alarm].Busyness = make(map[string][]float64)
 						data[alarm].Periods = make(map[string][]int64)
@@ -288,9 +286,10 @@ func processSuspend(deviceId string, sData *SuspendData, loglines []interface{},
 }
 
 type AlarmCpuCollector struct {
+	*phonelab.DefaultCollector
 	sync.Mutex
-	outPath    string
-	Serializer serialize.Serializer
+	wg sync.WaitGroup
+	*gsync.Semaphore
 }
 
 type fileContext struct {
@@ -298,7 +297,11 @@ type fileContext struct {
 }
 
 func (c *AlarmCpuCollector) OnData(data interface{}, info phonelab.PipelineSourceInfo) {
+	c.wg.Add(1)
+	c.P()
 	go func() {
+		defer c.wg.Done()
+		defer c.V()
 		r := data.(*AlarmBusynessData)
 
 		sourceInfo := info.(*phonelab.PhonelabSourceInfo)
@@ -308,12 +311,7 @@ func (c *AlarmCpuCollector) OnData(data interface{}, info phonelab.PipelineSourc
 		io.WriteString(h, r.DeliverAlarmsLocked.Logline.Line)
 		checksum := fmt.Sprintf("%x", h.Sum(nil))
 
-		u, err := url.Parse(c.outPath)
-		if err != nil {
-			log.Fatalf("Failed to parse URL from string: %v: %v", c.outPath, err)
-		}
-		u.Path = filepath.Join(u.Path, deviceId, "analysis", "alarm_cpu", fmt.Sprintf("%v.gz", checksum))
-		filename := u.String()
+		path := filepath.Join(deviceId, "analysis", "alarm_cpu", fmt.Sprintf("%v", checksum))
 
 		// XXX: Hack. Set Logline.Payload = nil
 		// Otherwise, Logline.Payload refers to
@@ -321,10 +319,13 @@ func (c *AlarmCpuCollector) OnData(data interface{}, info phonelab.PipelineSourc
 		// you see where this is going
 		r.DeliverAlarmsLocked.Logline.Payload = nil
 
-		c.Serializer.Serialize(r, filename)
+		info := &CustomInfo{path, "custom"}
+		c.DefaultCollector.OnData(r, info)
+
 	}()
 }
 
 func (c *AlarmCpuCollector) Finish() {
 	// Nothing to do here
+	c.wg.Wait()
 }

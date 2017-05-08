@@ -4,7 +4,6 @@ import (
 	"crypto/md5"
 	"fmt"
 	"io"
-	"net/url"
 	"path/filepath"
 	"sync"
 	"time"
@@ -15,7 +14,6 @@ import (
 	"github.com/gurupras/libphonelab-go/parsers"
 	"github.com/gurupras/libphonelab-go/trackers"
 	"github.com/shaseley/phonelab-go"
-	"github.com/shaseley/phonelab-go/serialize"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -189,7 +187,7 @@ func processWakelockBusyness(deviceId string, alarm *alarms.DeliverAlarmsLocked,
 			if alarm.AppPid == info.Tgid || alarm.AppPid == info.Pid || acquire.Pid == info.Tgid || acquire.Pid == info.Pid {
 				if _, ok := data[alarm]; !ok {
 					data[alarm] = &AlarmBusynessData{}
-					data[alarm].DeviceId = deviceId
+					//data[alarm].DeviceId = deviceId
 					data[alarm].DeliverAlarmsLocked = alarm
 					data[alarm].Busyness = make(map[string][]float64)
 					data[alarm].Periods = make(map[string][]int64)
@@ -243,11 +241,10 @@ func processWakelockBusyness(deviceId string, alarm *alarms.DeliverAlarmsLocked,
 
 type AlarmWakelockCpuCollector struct {
 	sync.Mutex
-	outPath    string
-	Serializer serialize.Serializer
-	wg         sync.WaitGroup
-	durations  []int64
+	wg sync.WaitGroup
 	*gsync.Semaphore
+	*phonelab.DefaultCollector
+	durations []int64
 }
 
 func __avg(slice []int64) float64 {
@@ -280,12 +277,7 @@ func (c *AlarmWakelockCpuCollector) OnData(data interface{}, info phonelab.Pipel
 		io.WriteString(h, r.DeliverAlarmsLocked.Logline.Line)
 		checksum := fmt.Sprintf("%x", h.Sum(nil))
 
-		u, err := url.Parse(c.outPath)
-		if err != nil {
-			log.Fatalf("Failed to parse URL from string: %v: %v", c.outPath, err)
-		}
-		u.Path = filepath.Join(u.Path, deviceId, "analysis", "alarm_wakelock_cpu", fmt.Sprintf("%v.gz", checksum))
-		filename := u.String()
+		path := filepath.Join(deviceId, "analysis", "alarm_wakelock_cpu", fmt.Sprintf("%v", checksum))
 
 		// XXX: Hack. Set Logline.Payload = nil
 		// Otherwise, Logline.Payload refers to
@@ -293,7 +285,8 @@ func (c *AlarmWakelockCpuCollector) OnData(data interface{}, info phonelab.Pipel
 		// you see where this is going
 		r.DeliverAlarmsLocked.Logline.Payload = nil
 
-		c.Serializer.Serialize(r, filename)
+		info := &CustomInfo{path, "custom"}
+		c.DefaultCollector.OnData(r, info)
 	}()
 }
 

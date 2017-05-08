@@ -2,7 +2,6 @@ package libphonelab
 
 import (
 	"fmt"
-	"net/url"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -12,7 +11,6 @@ import (
 	"github.com/gurupras/libphonelab-go/parsers"
 	"github.com/gurupras/libphonelab-go/trackers"
 	"github.com/shaseley/phonelab-go"
-	"github.com/shaseley/phonelab-go/serialize"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -212,10 +210,8 @@ type ScreenOffCpuCollector struct {
 	sync.Mutex
 	wg sync.WaitGroup
 	*gsync.Semaphore
-	serialize.Serializer
-	outPath       string
+	*phonelab.DefaultCollector
 	deviceDateMap map[string]map[string]*ScreenOffCpuData
-	Idx           int
 }
 
 func (c *ScreenOffCpuCollector) OnData(data interface{}, info phonelab.PipelineSourceInfo) {
@@ -233,6 +229,8 @@ func (c *ScreenOffCpuCollector) OnData(data interface{}, info phonelab.PipelineS
 		date := time.Unix(0, r.Date)
 		dateStr := fmt.Sprintf("%04d%02d%02d", date.Year(), int(date.Month()), date.Day())
 
+		c.Lock()
+		defer c.Unlock()
 		if _, ok := c.deviceDateMap[deviceId]; !ok {
 			c.deviceDateMap[deviceId] = make(map[string]*ScreenOffCpuData)
 		}
@@ -249,19 +247,9 @@ func (c *ScreenOffCpuCollector) Finish() {
 
 	for deviceId, dateMap := range c.deviceDateMap {
 		for dateStr, r := range dateMap {
-			u, err := url.Parse(c.outPath)
-			if err != nil {
-				log.Fatalf("Failed to parse URL from string: %v: %v", c.outPath, err)
-			}
-
-			u.Path = filepath.Join(u.Path, deviceId, "analysis", "screen_off_cpu", fmt.Sprintf("%v.gz", dateStr))
-			filename := u.String()
-
-			log.Infof("Serializing filename=%v", filename)
-			err = c.Serializer.Serialize(r, filename)
-			if err != nil {
-				log.Fatalf("Failed to serialize: %v", err)
-			}
+			path := filepath.Join(deviceId, "analysis", "screen_off_cpu", fmt.Sprintf("%v", dateStr))
+			info := &CustomInfo{path, "custom"}
+			c.DefaultCollector.OnData(r, info)
 		}
 	}
 }
