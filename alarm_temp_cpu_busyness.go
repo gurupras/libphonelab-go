@@ -37,7 +37,7 @@ type SuspendData struct {
 	lastSuspendEntry *phonelab.Logline
 }
 
-var acpSem = gsync.NewSem(20) // Max 20 concurrent bootIDs
+var acpSem = gsync.NewSem(8) // Max 8 concurrent bootIDs
 func (p *AlarmCpuProcessor) Process() <-chan interface{} {
 	outChan := make(chan interface{})
 
