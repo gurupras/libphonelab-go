@@ -111,8 +111,31 @@ func InitEnv(env *phonelab.Environment) {
 		c.TemperatureMap = make(map[string]map[string]int64)
 		return c
 	}
+	env.DataCollectors["suspend_cpu_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
+		c := &SuspendCpuCollector{}
+		d, err := phonelab.NewDefaultCollector(kwargs)
+		if err != nil {
+			panic(fmt.Sprintf("%v", err))
+		}
+		c.DefaultCollector = d.(*phonelab.DefaultCollector)
+		c.Semaphore = gsync.NewSem(100)
+		c.deviceDateMap = make(map[string]map[string][]*BusynessData)
+		return c
+	}
+	env.DataCollectors["alarm_window_lengths_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
+		c := &AlarmWindowLengthsCollector{}
+		d, err := phonelab.NewDefaultCollector(kwargs)
+		if err != nil {
+			panic(fmt.Sprintf("%v", err))
+		}
+		c.DefaultCollector = d.(*phonelab.DefaultCollector)
+		c.Semaphore = gsync.NewSem(100)
+		c.deviceDataMap = make(map[string][]int64)
+		return c
+	}
 
 	env.Processors["tag_count_processor"] = &TagCountProcGenerator{}
+	env.Processors["alarm_processor"] = &AlarmProcGenerator{}
 	env.Processors["alarm_temp_processor"] = &AlarmTempProcGenerator{}
 	env.Processors["alarm_trigger_temp_processor"] = &AlarmTriggerTempProcGenerator{}
 	env.Processors["alarm_cpu_processor"] = &AlarmCpuProcGenerator{}
@@ -122,6 +145,8 @@ func InitEnv(env *phonelab.Environment) {
 	env.Processors["stitch_processor"] = &StitchGenerator{}
 	env.Processors["stitch_checker_processor"] = &StitchCheckerProcGenerator{}
 	env.Processors["temperature_distribution_processor"] = &TDProcGenerator{}
+	env.Processors["suspend_cpu_processor"] = &SuspendCpuProcGenerator{}
+	env.Processors["alarm_window_lengths_processor"] = &AlarmWindowLengthsProcGenerator{}
 
 	// Parsers
 	env.RegisterParserGenerator("ThermaPlan->AlarmManagerService", alarms.NewDeliverAlarmsLockedParser)

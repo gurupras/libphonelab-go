@@ -3,7 +3,6 @@ package libphonelab
 import (
 	"github.com/gurupras/libphonelab-go/alarms"
 	"github.com/shaseley/phonelab-go"
-	log "github.com/sirupsen/logrus"
 )
 
 type AlarmProcGenerator struct{}
@@ -21,11 +20,6 @@ type AlarmProcessor struct {
 	Info   phonelab.PipelineSourceInfo
 }
 
-type AlarmResult struct {
-	*alarms.DeliverAlarmsLocked
-	Info phonelab.PipelineSourceInfo
-}
-
 func (p *AlarmProcessor) Process() <-chan interface{} {
 	outChan := make(chan interface{}, 100)
 
@@ -38,14 +32,9 @@ func (p *AlarmProcessor) Process() <-chan interface{} {
 				continue
 			}
 			switch ll.Payload.(type) {
-			default:
-				deliverAlarm, err := alarms.ParseDeliverAlarmsLocked(ll)
-				if err != nil {
-					log.Errorf("Failed to parse deliverAlarm: %v", err)
-				}
-				if deliverAlarm != nil && deliverAlarm.WindowLength != 0 {
-					outChan <- &AlarmResult{deliverAlarm, p.Info}
-				}
+			case *alarms.DeliverAlarmsLocked:
+				deliverAlarm := ll.Payload.(*alarms.DeliverAlarmsLocked)
+				outChan <- deliverAlarm
 			}
 		}
 	}()

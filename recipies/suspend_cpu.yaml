@@ -1,6 +1,6 @@
 max_concurrency: 8
 data_collector:
-  name: "alarm_cpu_collector"
+  name: "suspend_cpu_collector"
   args:
     path: http://dirtydeeds.cse.buffalo.edu:31442/upload
     #path: file:///phonelab/mobicom17-alarms/data
@@ -38,7 +38,7 @@ source:
     hdfs_addr: dirtydeeds.cse.buffalo.edu:9000
     daterange: 20170416-20170417
 processors:
-  - name: alarm_cpu_processor
+  - name: suspend_cpu_processor
     has_logstream: true
     parsers:
       - "Kernel-Trace"
@@ -62,4 +62,4 @@ processors:
 
 
 sink:
-  name: alarm_cpu_processor
+  name: suspend_cpu_processor

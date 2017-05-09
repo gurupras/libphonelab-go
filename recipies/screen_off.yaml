@@ -37,7 +37,7 @@ source:
 #    - '/processed/442efeb4330b8f5ccf20620e3e537e7ba579ffab/info.json'
   args:
     hdfs_addr: dirtydeeds.cse.buffalo.edu:9000
-    daterange: 20170310-20170429
+    daterange: 20170416-20170417
 processors:
   - name: screen_off_cpu_processor
     has_logstream: true

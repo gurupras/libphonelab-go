@@ -1,12 +1,11 @@
-max_concurrency: 8
+max_concurrency: 20
 data_collector:
-  name: "alarm_cpu_collector"
+  name: "alarm_window_lengths_collector"
   args:
     path: http://dirtydeeds.cse.buffalo.edu:31442/upload
     #path: file:///phonelab/mobicom17-alarms/data
     aggregate: false
     compress: true
-    #hdfs_addr:
 
 source:
   type: phonelab
@@ -36,30 +35,17 @@ source:
 #    - '/processed/442efeb4330b8f5ccf20620e3e537e7ba579ffab/info.json'
   args:
     hdfs_addr: dirtydeeds.cse.buffalo.edu:9000
-    daterange: 20170416-20170417
+    daterange: 20170310-20170315
 processors:
-  - name: alarm_cpu_processor
+  - name: alarm_processor
     has_logstream: true
+    filters:
+      - type: simple
+        filter: "deliverAlarmsLocked()"
     parsers:
-      - "Kernel-Trace"
-      - "KernelPrintk"
       - "ThermaPlan->AlarmManagerService"
-      - "SurfaceFlinger"
-      - "Power-Battery-PhoneLab"
-# We cannot be using filters since there are missing loglines Uncomment these
-# once the missing logline problem has been corrected
-#    filters:
-#      - type: "simple"
-#        filter: "periodic_ctx"
-#      - type: "simple"
-#        filter: "cpu_frequency:"
-#      - type: "simple"
-#        filter: "sched_cpu_hotplug:"
-#      - type: "simple"
-#        filter: "deliverAlarmsLocked()"
-#      - type: "regex"
-#        filter: "KernelPrintk.*PM:"
-
+  - name: alarm_window_lengths_processor
+    inputs: [{name: alarm_processor}]
 
 sink:
-  name: alarm_cpu_processor
+  name: alarm_window_lengths_processor

@@ -35,7 +35,7 @@ source:
 #    - '/processed/442efeb4330b8f5ccf20620e3e537e7ba579ffab/info.json'
   args:
     hdfs_addr: dirtydeeds.cse.buffalo.edu:9000
-    daterange: 20170310-20170429
+    daterange: 20170310-20170315
 processors:
   - name: alarm_temp_processor
     has_logstream: true
