@@ -115,9 +115,23 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 							alarmSet.Remove(obj)
 							// Add all the temperatures for this alarm and ship it out
 							// Our max threshold is 80% the window length of the alarm
-							threshold := time.Duration((80 * (alarm.WindowLength * 1000000)) / 100)
-							startIdx, closestTimestamp := distribution.FindIdxByTimestampBinarySearch(alarm.DeliverAlarmsLocked.WhenRtc*1000000, threshold)
-							_ = closestTimestamp
+							var (
+								startIdx         int
+								closestTimestamp int64
+							)
+
+							/*
+								for threshold := 1; threshold < 80; threshold += 5 {
+									thresholdDuration := time.Duration((int64(threshold) * (alarm.WindowLength * 1000000)) / 100)
+									startIdx, closestTimestamp = distribution.FindIdxByTimestampBinarySearch(alarm.DeliverAlarmsLocked.WhenRtc*1000000, thresholdDuration)
+									_ = closestTimestamp
+									if startIdx != -1 {
+										break
+									}
+								}
+							*/
+							startIdx, closestTimestamp = distribution.FindIdxByTimestampBinarySearch(alarm.DeliverAlarmsLocked.WhenRtc*1000000, 3*time.Second)
+
 							if startIdx == -1 {
 								log.Debugf("Failed to find nearest timestamp. When=%v nearest=%v", alarm.DeliverAlarmsLocked.WhenRtc*1000000, closestTimestamp)
 								atomic.AddUint32(&whenTempSkipped, 1)
@@ -129,7 +143,7 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 							// XXX: The Rtc field is never fixed up and this may be changed in the future
 							// So instead, rely on backtracking from WhenELAPSED and NowELAPSED and WhenRtc
 							// now = when + time_since_when_until_now ('now' refers to when the alarm was triggered. not __NOW__
-							rtc := int64(time.Duration(alarm.WhenRtc+(alarm.NowElapsed-alarm.WhenElapsed)) * time.Millisecond)
+							rtc := int64(time.Duration(alarm.WhenRtc+(alarm.NowElapsed-alarm.WhenElapsed)) * 1000000)
 							if idx, closestTimestamp := distribution.FindIdxByTimestampBinarySearch(rtc, 2*time.Second); idx == -1 {
 								// We don't have a trigger temperature. Skip this alarm.
 								log.Debugf("Trigger skip when=%v nearest=%v", rtc, closestTimestamp)
@@ -138,8 +152,14 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 							} else {
 								alarm.TriggerTemp = distribution.Temps[idx]
 							}
-							alarm.Temps = append(alarm.Temps, distribution.Temps[startIdx:]...)
-							alarm.Timestamps = append(alarm.Timestamps, distribution.Timestamps[startIdx:]...)
+							for idx := startIdx; idx < len(distribution.Temps); idx++ {
+								if distribution.Timestamps[idx] < alarm.MaxWhenRtc*1000000 {
+									alarm.Temps = append(alarm.Temps, distribution.Temps[idx])
+									alarm.Timestamps = append(alarm.Timestamps, distribution.Timestamps[idx])
+								} else {
+									break
+								}
+							}
 							outChan <- alarm
 						}
 					}(obj)
