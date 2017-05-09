@@ -55,7 +55,7 @@ func (p *AlarmWindowLengthsProcessor) Process() <-chan interface{} {
 		defer atMaxConcurrentSem.V()
 
 		bypass := false
-		if !p.bootIds.Has(bootId) {
+		if p.bootIds.Size() > 0 && !p.bootIds.Has(bootId) {
 			bypass = true
 		}
 
