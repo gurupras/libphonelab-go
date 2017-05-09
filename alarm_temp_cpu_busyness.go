@@ -34,6 +34,7 @@ type AlarmCpuProcessor struct {
 
 type SuspendData struct {
 	lastSuspendExit  *phonelab.Logline
+	WakeupCpuState   map[int]*trackers.CpuTrackerData
 	lastSuspendEntry *phonelab.Logline
 }
 
@@ -54,6 +55,8 @@ func (p *AlarmCpuProcessor) Process() <-chan interface{} {
 	)
 
 	tracker := trackers.New()
+	cpuTracker := trackers.NewCpuTracker(tracker)
+
 	missingLoglinesTracker := trackers.NewMissingLoglinesTracker(tracker)
 	missingLoglinesTracker.AddCallback(func(logline *phonelab.Logline) {
 		// We cannot be sure if we missed a suspend logline
@@ -86,6 +89,9 @@ func (p *AlarmCpuProcessor) Process() <-chan interface{} {
 			}
 		}
 	}
+	missingLoglinesTracker.AddCallback(func(logline *phonelab.Logline) {
+		screenStateTracker.CurrentState = trackers.SCREEN_STATE_UNKNOWN
+	})
 
 	trackers.NewCpuTracker(tracker)
 	sleepTracker := trackers.NewSleepTracker(tracker)
@@ -133,7 +139,7 @@ func (p *AlarmCpuProcessor) Process() <-chan interface{} {
 	sleepTracker.SuspendExitCallback = func(logline *phonelab.Logline) {
 		if screenStateTracker.CurrentState == trackers.SCREEN_STATE_OFF && chargingStateTracker.CurrentState == trackers.CHARGE_STATE_UNPLUGGED {
 			lastSuspendExit = logline
-			sData := &SuspendData{lastSuspendExit, nil}
+			sData := &SuspendData{lastSuspendExit, cpuTracker.CloneCurrentState(), nil}
 			suspendDataMap[sData] = make([]*phonelab.Logline, 0)
 			//log.Infof("Added new suspend entry")
 		}
@@ -180,13 +186,47 @@ func (p *AlarmCpuProcessor) Process() <-chan interface{} {
 	return outChan
 }
 
-type AlarmBusynessData struct {
-	*alarms.DeliverAlarmsLocked
+type BusynessData struct {
 	Busyness  map[string][]float64
 	Periods   map[string][]int64
 	Frequency map[string][]int
 	Duration  int64
-	Lines     []string
+}
+
+func (bd *BusynessData) Update(o *BusynessData) {
+	for k, v := range o.Busyness {
+		if _, ok := bd.Busyness[k]; !ok {
+			bd.Busyness[k] = make([]float64, 0)
+		}
+		bd.Busyness[k] = append(bd.Busyness[k], v...)
+	}
+	for k, v := range o.Periods {
+		if _, ok := bd.Periods[k]; !ok {
+			bd.Periods[k] = make([]int64, 0)
+		}
+		bd.Periods[k] = append(bd.Periods[k], v...)
+	}
+	for k, v := range o.Frequency {
+		if _, ok := bd.Frequency[k]; !ok {
+			bd.Frequency[k] = make([]int, 0)
+		}
+		bd.Frequency[k] = append(bd.Frequency[k], v...)
+	}
+	bd.Duration += o.Duration
+}
+
+func NewBusynessData() *BusynessData {
+	d := &BusynessData{}
+	d.Busyness = make(map[string][]float64)
+	d.Periods = make(map[string][]int64)
+	d.Frequency = make(map[string][]int)
+	return d
+}
+
+type AlarmBusynessData struct {
+	*alarms.DeliverAlarmsLocked
+	*BusynessData
+	Lines []string
 }
 
 func processSuspend(deviceId string, sData *SuspendData, loglines []interface{}, outChannel chan interface{}) {
@@ -233,6 +273,8 @@ func processSuspend(deviceId string, sData *SuspendData, loglines []interface{},
 
 	tracker := trackers.New()
 	cpuTracker := trackers.NewCpuTracker(tracker)
+	// Update cpu tracker with state on wakeup
+	cpuTracker.CurrentState = sData.WakeupCpuState
 	pcsiTracker := trackers.NewPeriodicCtxSwitchInfoTracker(tracker)
 	pcsiTracker.Callback = func(ctxSwitchInfo *trackers.PeriodicCtxSwitchInfo) {
 		for _, line := range ctxSwitchInfo.Info {
@@ -241,11 +283,9 @@ func processSuspend(deviceId string, sData *SuspendData, loglines []interface{},
 				for _, alarm := range alarmMap[info.Tgid] {
 					if _, ok := data[alarm]; !ok {
 						data[alarm] = &AlarmBusynessData{}
+						data[alarm].BusynessData = NewBusynessData()
 						//data[alarm].DeviceId = deviceId
 						data[alarm].DeliverAlarmsLocked = alarm
-						data[alarm].Busyness = make(map[string][]float64)
-						data[alarm].Periods = make(map[string][]int64)
-						data[alarm].Frequency = make(map[string][]int)
 						/*
 							data[alarm].Lines = make([]string, len(loglines))
 							for idx, logline := range loglines {
