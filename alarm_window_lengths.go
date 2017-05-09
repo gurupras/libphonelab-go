@@ -67,10 +67,11 @@ func (p *AlarmWindowLengthsProcessor) Process() <-chan interface{} {
 			if bypass {
 				continue
 			}
+			ll := obj.(*phonelab.Logline)
 
-			switch obj.(type) {
+			switch ll.Payload.(type) {
 			case *alarms.DeliverAlarmsLocked:
-				deliverAlarm := obj.(*alarms.DeliverAlarmsLocked)
+				deliverAlarm := ll.Payload.(*alarms.DeliverAlarmsLocked)
 
 				if deliverAlarm.WindowLength == 0 {
 					// Nothing to do
@@ -82,6 +83,9 @@ func (p *AlarmWindowLengthsProcessor) Process() <-chan interface{} {
 				}
 				uuids.Add(deliverAlarm.Uuid)
 				windowLengths = append(windowLengths, deliverAlarm.WindowLength)
+				if len(windowLengths)%100 == 0 {
+					log.Infof("size=%d", len(windowLengths))
+				}
 			}
 		}
 		outChan <- windowLengths

@@ -35,17 +35,14 @@ source:
 #    - '/processed/442efeb4330b8f5ccf20620e3e537e7ba579ffab/info.json'
   args:
     hdfs_addr: dirtydeeds.cse.buffalo.edu:9000
-    daterange: 20170310-20170315
+    daterange: 20170327-20170413
 processors:
-  - name: alarm_processor
+  - name: alarm_window_lengths_processor
     has_logstream: true
     filters:
       - type: simple
         filter: "deliverAlarmsLocked()"
     parsers:
       - "ThermaPlan->AlarmManagerService"
-  - name: alarm_window_lengths_processor
-    inputs: [{name: alarm_processor}]
-
 sink:
   name: alarm_window_lengths_processor
