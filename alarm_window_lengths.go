@@ -84,7 +84,7 @@ func (p *AlarmWindowLengthsProcessor) Process() <-chan interface{} {
 				uuids.Add(deliverAlarm.Uuid)
 				windowLengths = append(windowLengths, deliverAlarm.WindowLength)
 				if len(windowLengths)%100 == 0 {
-					log.Infof("size=%d", len(windowLengths))
+					log.Debugf("size=%d", len(windowLengths))
 				}
 			}
 		}
@@ -99,7 +99,7 @@ type AlarmWindowLengthsCollector struct {
 	wg sync.WaitGroup
 	*phonelab.DefaultCollector
 	*gsync.Semaphore
-	deviceDataMap map[string][]int64
+	deviceDataMap map[string]map[string][]int64
 }
 
 func (c *AlarmWindowLengthsCollector) OnData(data interface{}, info phonelab.PipelineSourceInfo) {
@@ -111,11 +111,12 @@ func (c *AlarmWindowLengthsCollector) OnData(data interface{}, info phonelab.Pip
 		r := data.([]int64)
 		sourceInfo := info.(*phonelab.PhonelabSourceInfo)
 		deviceId := sourceInfo.DeviceId
+		bootId := sourceInfo.BootId
 
 		if _, ok := c.deviceDataMap[deviceId]; !ok {
-			c.deviceDataMap[deviceId] = make([]int64, 0)
+			c.deviceDataMap[deviceId] = make(map[string][]int64)
 		}
-		c.deviceDataMap[deviceId] = append(c.deviceDataMap[deviceId], r...)
+		c.deviceDataMap[deviceId][bootId] = r
 	}()
 }
 
