@@ -59,6 +59,15 @@ func (ct *CpuTracker) LastLogline(cpu int) *phonelab.Logline {
 	return csLogline
 }
 
+func (ct *CpuTracker) CloneCurrentState() (ret map[int]*CpuTrackerData) {
+	ret = make(map[int]*CpuTrackerData)
+	for idx, data := range ct.CurrentState {
+		ret[idx] = &CpuTrackerData{}
+		*ret[idx] = *data
+	}
+	return
+}
+
 func NewCpuTracker(tracker *Tracker) (cpuTracker *CpuTracker) {
 	if tracker == nil {
 		tracker = New()
