@@ -243,10 +243,6 @@ func processSuspend(deviceId string, sData *SuspendData, loglines []interface{},
 		if !strings.Contains(logline.Line, "deliverAlarmsLocked()") {
 			continue
 		}
-		switch t := logline.Payload.(type) {
-		case *phonelab.ThermalTemp:
-			temps = append(temps, t.Temp)
-		}
 		dal, _ := logline.Payload.(*alarms.DeliverAlarmsLocked)
 		if dal != nil {
 			alarmList = append(alarmList, dal)
@@ -322,6 +318,10 @@ func processSuspend(deviceId string, sData *SuspendData, loglines []interface{},
 	for _, obj := range loglines {
 		logline := obj.(*phonelab.Logline)
 		tracker.ApplyLogline(logline)
+		switch t := logline.Payload.(type) {
+		case *phonelab.ThermalTemp:
+			temps = append(temps, t.Temp)
+		}
 	}
 
 	for alarm, datetime := range lastInfo {
