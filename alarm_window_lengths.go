@@ -52,7 +52,6 @@ func (p *AlarmWindowLengthsProcessor) Process() <-chan interface{} {
 
 	go func() {
 		defer close(outChan)
-		defer atMaxConcurrentSem.V()
 
 		bypass := false
 		if p.bootIds.Size() > 0 && !p.bootIds.Has(bootId) {
