@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
-	"sync/atomic"
 
 	"github.com/fatih/set"
 	"github.com/gurupras/gocommons/gsync"
@@ -88,7 +87,7 @@ func (p *AlarmWindowLengthsProcessor) Process() <-chan interface{} {
 			}
 		}
 		outChan <- windowLengths
-		log.Infof("%v->%v: %d/%d", deviceId, bootId, atomic.AddUint32(atDeviceMap[deviceId]["finished"].(*uint32), 1), total)
+		//log.Infof("%v->%v: %d/%d", deviceId, bootId, atomic.AddUint32(atDeviceMap[deviceId]["finished"].(*uint32), 1), total)
 	}()
 	return outChan
 }
