@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
+	"time"
 
+	"github.com/gurupras/libphonelab-go/trackers"
 	"github.com/shaseley/phonelab-go"
 	log "github.com/sirupsen/logrus"
 )
@@ -24,20 +26,21 @@ type TDProcessor struct {
 	Info   phonelab.PipelineSourceInfo
 }
 
-type TDData struct {
-	Temps map[string]int64
-}
-
-func NewTDData() *TDData {
-	atd := &TDData{}
-	atd.Temps = make(map[string]int64)
-	return atd
-}
-
 func (p *TDProcessor) Process() <-chan interface{} {
 	outChan := make(chan interface{})
 
-	tempData := NewTDData()
+	tempData := TemperatureDistribution{}
+
+	tracker := trackers.New()
+	dayTracker := trackers.NewDayTracker(tracker)
+	dayTracker.Callback = func(logline *phonelab.Logline) {
+		date := time.Unix(0, dayTracker.DayStartLogline.Datetime.UnixNano())
+		dateStr := fmt.Sprintf("%04d%02d%02d", date.Year(), int(date.Month()), date.Day())
+		dayTempDist := DayTemperatureDistribution{}
+		dayTempDist[dateStr] = tempData
+		outChan <- dayTempDist
+		tempData = TemperatureDistribution{}
+	}
 
 	go func() {
 		defer close(outChan)
@@ -48,49 +51,56 @@ func (p *TDProcessor) Process() <-chan interface{} {
 			if !ok {
 				continue
 			}
+			tracker.ApplyLogline(ll)
 			switch ll.Payload.(type) {
 			case *phonelab.ThermalTemp:
 				tt := ll.Payload.(*phonelab.ThermalTemp)
 				temp := tt.Temp
-				tempData.Temps[fmt.Sprintf("%v", temp)] += 1
-			default:
-				log.Fatalf("Unknown line: %v", ll.Line)
+				tempData[fmt.Sprintf("%v", temp)] += 1
 			}
 		}
-		outChan <- tempData
+		if len(tempData) > 0 {
+			dayTracker.Callback(nil)
+		}
 	}()
 	return outChan
 }
+
+type TemperatureDistribution map[string]int64
+type DayTemperatureDistribution map[string]TemperatureDistribution
 
 type TDCollector struct {
 	sync.Mutex
 	wg sync.WaitGroup
 	*phonelab.DefaultCollector
-	TemperatureMap map[string]map[string]int64
+	TemperatureMap map[string]DayTemperatureDistribution
 }
 
 func (c *TDCollector) OnData(data interface{}, info phonelab.PipelineSourceInfo) {
-	r := data.(*TDData)
+	log.Debugf("onData()")
+	r := data.(DayTemperatureDistribution)
 	sourceInfo := info.(*phonelab.PhonelabSourceInfo)
 	deviceId := sourceInfo.DeviceId
 
 	if _, ok := c.TemperatureMap[deviceId]; !ok {
 		c.Lock()
-		c.TemperatureMap[deviceId] = make(map[string]int64)
+		c.TemperatureMap[deviceId] = DayTemperatureDistribution{}
 		c.Unlock()
 	}
 	dMap := c.TemperatureMap[deviceId]
 	// Update the map
-	for k, v := range r.Temps {
-		dMap[k] += v
+	for k, v := range r {
+		dMap[k] = v
 	}
 }
 
 func (c *TDCollector) Finish() {
+	log.Debugf("Finish()")
 	c.wg.Add(len(c.TemperatureMap))
 	for deviceId := range c.TemperatureMap {
 		go func(deviceId string) {
 			defer c.wg.Done()
+			log.Infof("Shipping out data")
 			path := filepath.Join(deviceId, "analysis", "temp_distribution")
 			info := &CustomInfo{path, "custom"}
 			c.DefaultCollector.OnData(c.TemperatureMap[deviceId], info)

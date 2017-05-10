@@ -108,7 +108,7 @@ func InitEnv(env *phonelab.Environment) {
 			panic(fmt.Sprintf("%v", err))
 		}
 		c.DefaultCollector = d.(*phonelab.DefaultCollector)
-		c.TemperatureMap = make(map[string]map[string]int64)
+		c.TemperatureMap = make(map[string]DayTemperatureDistribution)
 		return c
 	}
 	env.DataCollectors["suspend_cpu_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
