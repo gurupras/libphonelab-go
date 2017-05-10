@@ -190,6 +190,7 @@ type BusynessData struct {
 	Busyness  map[string][]float64
 	Periods   map[string][]int64
 	Frequency map[string][]int
+	Temps     []int
 	Duration  int64
 }
 
@@ -233,6 +234,7 @@ func processSuspend(deviceId string, sData *SuspendData, loglines []interface{},
 	// Find all alarms that occured within the first 5 seconds of suspend exit
 	alarmList := make([]*alarms.DeliverAlarmsLocked, 0)
 	startTime := sData.lastSuspendExit.Datetime
+	temps := make([]int)
 	for _, obj := range loglines {
 		logline := obj.(*phonelab.Logline)
 		if logline.Datetime.Sub(startTime) > 5*time.Second {
@@ -240,6 +242,10 @@ func processSuspend(deviceId string, sData *SuspendData, loglines []interface{},
 		}
 		if !strings.Contains(logline.Line, "deliverAlarmsLocked()") {
 			continue
+		}
+		switch t := logline.Payload.(type) {
+		case *phonelab.ThermalTemp:
+			temps = append(temps, t.Temp)
 		}
 		dal, _ := logline.Payload.(*alarms.DeliverAlarmsLocked)
 		if dal != nil {
@@ -323,6 +329,7 @@ func processSuspend(deviceId string, sData *SuspendData, loglines []interface{},
 	}
 
 	for _, suspendData := range data {
+		suspendData.Temps = temps
 		outChannel <- suspendData
 	}
 }
