@@ -234,7 +234,7 @@ func processSuspend(deviceId string, sData *SuspendData, loglines []interface{},
 	// Find all alarms that occured within the first 5 seconds of suspend exit
 	alarmList := make([]*alarms.DeliverAlarmsLocked, 0)
 	startTime := sData.lastSuspendExit.Datetime
-	temps := make([]int)
+	temps := make([]int, 0)
 	for _, obj := range loglines {
 		logline := obj.(*phonelab.Logline)
 		if logline.Datetime.Sub(startTime) > 5*time.Second {
