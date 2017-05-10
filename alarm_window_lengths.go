@@ -47,7 +47,6 @@ func (p *AlarmWindowLengthsProcessor) Process() <-chan interface{} {
 	sourceInfo := p.Info.(*phonelab.PhonelabSourceInfo)
 	deviceId := sourceInfo.DeviceId
 	bootId := sourceInfo.BootId
-	total := len(sourceInfo.BootIds())
 
 	go func() {
 		defer close(outChan)
@@ -87,7 +86,7 @@ func (p *AlarmWindowLengthsProcessor) Process() <-chan interface{} {
 			}
 		}
 		outChan <- windowLengths
-		//log.Infof("%v->%v: %d/%d", deviceId, bootId, atomic.AddUint32(atDeviceMap[deviceId]["finished"].(*uint32), 1), total)
+		_ = deviceId
 	}()
 	return outChan
 }
