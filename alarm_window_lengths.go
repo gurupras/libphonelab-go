@@ -122,7 +122,7 @@ func (c *AlarmWindowLengthsCollector) Finish() {
 	c.wg.Wait()
 
 	for deviceId, data := range c.deviceDataMap {
-		path := filepath.Join(deviceId, "analysis", "window_lengths.gz")
+		path := filepath.Join(deviceId, "analysis", "window_lengths")
 		info := &CustomInfo{path, "custom"}
 		c.DefaultCollector.OnData(data, info)
 	}
