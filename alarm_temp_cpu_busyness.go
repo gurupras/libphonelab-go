@@ -152,7 +152,7 @@ func (p *AlarmCpuProcessor) Process() <-chan interface{} {
 		inChan := p.Source.Process()
 		for obj := range inChan {
 			ll, ok := obj.(*phonelab.Logline)
-			if !ok {
+			if ll == nil || !ok {
 				continue
 			}
 
