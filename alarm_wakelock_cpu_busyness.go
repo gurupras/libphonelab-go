@@ -144,7 +144,7 @@ func (p *AlarmWakelockCpuProcessor) Process() <-chan interface{} {
 			case *alarms.DeliverAlarmsLocked:
 				dal := t
 				if dal.WindowLength == 0 {
-					continue
+					//continue
 				}
 				dal.Logline = ll
 				if chargingStateTracker.CurrentState == trackers.CHARGE_STATE_UNPLUGGED && screenStateTracker.CurrentState == trackers.SCREEN_STATE_OFF {
