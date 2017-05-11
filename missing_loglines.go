@@ -1,11 +1,11 @@
 package libphonelab
 
 import (
-	"io/ioutil"
-	"log"
-	"os"
+	"path/filepath"
 	"sync"
 
+	"github.com/fatih/set"
+	"github.com/gurupras/gocommons/gsync"
 	"github.com/shaseley/phonelab-go"
 )
 
@@ -29,26 +29,32 @@ type MissingChunk struct {
 	End   int64 `json:"end"`
 }
 type MissingLoglinesResult struct {
-	Info    phonelab.PipelineSourceInfo
+	BootId  string          `json:"boot_id"`
 	Start   int64           `json:"start"`
 	End     int64           `json:"end"`
 	Missing []*MissingChunk `json:"missing"`
 }
 
+// First thing to remember is that tokens are not always in order.
+// Stitch sorts them by timestamps since these being sequential is more
+// important than tokens being sequential. Thus, we may find tokens that
+// are out of order and have to account for this while attempting to compute
+// missing tokens.
 func (p *MissingLoglinesProcessor) Process() <-chan interface{} {
 	outChan := make(chan interface{})
 
+	sourceInfo := p.Info.(*phonelab.PhonelabSourceInfo)
+
 	result := &MissingLoglinesResult{}
 	result.Missing = make([]*MissingChunk, 0)
-	result.Info = p.Info
+	result.BootId = sourceInfo.BootId
+
+	seen := set.NewNonTS()
+	last := int64(0)
 
 	go func() {
 		defer close(outChan)
 		inChan := p.Source.Process()
-		var (
-			last    int64
-			current int64
-		)
 		for obj := range inChan {
 			ll, ok := obj.(*phonelab.Logline)
 			if !ok {
@@ -56,107 +62,61 @@ func (p *MissingLoglinesProcessor) Process() <-chan interface{} {
 			}
 			if last == 0 {
 				result.Start = ll.LogcatToken
-				last = ll.LogcatToken
-				continue
 			}
-			current = ll.LogcatToken
+			seen.Add(ll.LogcatToken)
+			last = ll.LogcatToken
+		}
 
-			if current > last+1 {
+		result.End = last
+		for idx := result.Start; idx < result.End; idx++ {
+			if !seen.Has(idx) {
+				start := idx
+				var end int64
+				for end = start + 1; end < result.End; end++ {
+					if seen.Has(end) {
+						break
+					}
+				}
 				missing := &MissingChunk{
-					last,
-					current,
+					start,
+					end - 1,
 				}
 				result.Missing = append(result.Missing, missing)
 			}
-			last = current
 		}
-		result.End = last
 		outChan <- result
 	}()
 	return outChan
 }
 
 type MissingLoglinesCollector struct {
+	*phonelab.DefaultCollector
 	sync.Mutex
-	Data []*MissingLoglinesResult
+	wg sync.WaitGroup
+	*gsync.Semaphore
+	deviceDataMap map[string][]*MissingLoglinesResult
 }
 
-func (c *MissingLoglinesCollector) OnData(data interface{}) {
-	// FIXME: Fix this once collector is finalized
-	/*
-		r := data.(*MissingLoglinesResult)
+func (c *MissingLoglinesCollector) OnData(data interface{}, info phonelab.PipelineSourceInfo) {
+	sourceInfo := info.(*phonelab.PhonelabSourceInfo)
+	deviceId := sourceInfo.DeviceId
+
+	r := data.(*MissingLoglinesResult)
+	if _, ok := c.deviceDataMap[deviceId]; !ok {
 		c.Lock()
-		defer c.Unlock()
-		if strings.Compare(c.DeviceId, "") == 0 {
-			c.DeviceId = r.DeviceId
-			c.BootId = r.BootId
-			c.BasePath = r.BasePath
-			c.hdfsAddr = r.hdfsAddr
-		}
-		c.Data = append(c.Data, r)
-	*/
+		c.deviceDataMap[deviceId] = make([]*MissingLoglinesResult, 0)
+		c.Unlock()
+	}
+	c.deviceDataMap[deviceId] = append(c.deviceDataMap[deviceId], r)
 }
 
 func (c *MissingLoglinesCollector) Finish() {
-	// FIXME: Fix this once collector is finalized
-	/*
-		deviceId := c.DeviceId
-		basePath := c.BasePath
-		outdir := filepath.Join(basePath, deviceId, "analysis")
-
-		client, err := hdfs.NewHdfsClient(c.hdfsAddr)
-		if err != nil {
-			panic(fmt.Sprintf("Failed to get hdfs client: %v", err))
-		}
-		if client != nil {
-			err = client.MkdirAll(outdir, 0775)
-		} else {
-			if !easyfiles.Exists(outdir) {
-				err = easyfiles.Makedirs(outdir)
-			}
-		}
-		if err != nil {
-			panic(fmt.Sprintf("Failed to makedir: %v", outdir))
-		}
-
-		b, err := json.Marshal(&c.Data)
-		if err != nil {
-			panic(fmt.Sprintf("Failed to marshal final results: %v", err))
-		}
-		fpath := filepath.Join(outdir, "missing_loglines.gz")
-		file, err := hdfs.OpenFile(fpath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, easyfiles.GZ_TRUE, client)
-		if err != nil {
-			panic(fmt.Sprintf("Failed to open file: %v", fpath))
-		}
-		defer file.Close()
-		writer, _ := file.Writer(0)
-		defer writer.Close()
-		defer writer.Flush()
-
-		writer.Write(b)
-	*/
+	for deviceId, data := range c.deviceDataMap {
+		path := filepath.Join(deviceId, "analysis", "missing_loglines")
+		info := &CustomInfo{path, "custom"}
+		c.DefaultCollector.OnData(data, info)
+	}
 }
 
 func MissingLoglinesMain() {
-	log.SetOutput(ioutil.Discard)
-	env := phonelab.NewEnvironment()
-
-	/*
-		env.DataCollectors["missing_loglines_collector"] = func() phonelab.DataCollector {
-			c := &MissingLoglinesCollector{}
-			c.Data = make([]*MissingLoglinesResult, 0)
-			return c
-		}
-	*/
-	env.Processors["missing_loglines_processor"] = &MissingLoglinesProcGenerator{}
-
-	conf, err := phonelab.RunnerConfFromFile(os.Args[1])
-	if err != nil {
-		panic(err)
-	}
-	runner, err := conf.ToRunner(env)
-	if err != nil {
-		panic(err)
-	}
-	runner.Run()
 }
