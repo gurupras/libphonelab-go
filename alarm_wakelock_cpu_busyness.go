@@ -56,7 +56,7 @@ func (p *AlarmWakelockCpuProcessor) Process() <-chan interface{} {
 		processSet = set.NewNonTS()
 	}
 
-	loglineDistribution := NewAbstractDistribution(nil, 8*time.Hour)
+	loglineDistribution := NewAbstractDistribution(nil, 4*time.Hour)
 
 	tracker := trackers.New()
 	missingLoglinesTracker := trackers.NewMissingLoglinesTracker(tracker)
@@ -84,8 +84,11 @@ func (p *AlarmWakelockCpuProcessor) Process() <-chan interface{} {
 	}
 
 	trackers.NewCpuTracker(tracker)
+
+	scpSem.P()
 	go func() {
 		defer close(outChan)
+		defer scpSem.V()
 
 		inChan := p.Source.Process()
 		for obj := range inChan {
@@ -108,13 +111,14 @@ func (p *AlarmWakelockCpuProcessor) Process() <-chan interface{} {
 
 					// Remove one alarm from the set
 					if pidAlarmMap[pid] == nil || pidAlarmMap[pid].Size() == 0 {
-						break
+						processSet.Remove(obj)
+						continue
 					}
 					obj := pidAlarmMap[pid].Pop()
 					alarm := obj.(*alarms.DeliverAlarmsLocked)
 
 					// Now find all loglines between this acquire and release
-					idx, _ := loglineDistribution.FindIdxByTimestampLinear(entry.Acquire.Datetime.UnixNano(), 5*time.Second)
+					idx, _ := loglineDistribution.FindIdxByTimestampBinarySearch(entry.Acquire.Datetime.UnixNano(), 5*time.Second)
 					if idx == -1 {
 						log.Errorf("Failed to find nearest timestamp to wakelock acquire")
 						// TODO: Do some cleanup
@@ -122,7 +126,7 @@ func (p *AlarmWakelockCpuProcessor) Process() <-chan interface{} {
 						loglines := loglineDistribution.Data[idx:]
 						data := processWakelockBusyness(deviceId, alarm, entry, loglines)
 						if data != nil {
-							log.Infof("Got alarm busyness data")
+							//log.Infof("Got alarm busyness data")
 							outChan <- data
 						}
 					}
@@ -187,11 +191,9 @@ func processWakelockBusyness(deviceId string, alarm *alarms.DeliverAlarmsLocked,
 			if alarm.AppPid == info.Tgid || alarm.AppPid == info.Pid || acquire.Pid == info.Tgid || acquire.Pid == info.Pid {
 				if _, ok := data[alarm]; !ok {
 					data[alarm] = &AlarmBusynessData{}
+					data[alarm].BusynessData = NewBusynessData()
 					//data[alarm].DeviceId = deviceId
 					data[alarm].DeliverAlarmsLocked = alarm
-					data[alarm].Busyness = make(map[string][]float64)
-					data[alarm].Periods = make(map[string][]int64)
-					data[alarm].Frequency = make(map[string][]int)
 					/*
 						data[alarm].Lines = make([]string, len(loglines))
 						for idx, logline := range loglines {
@@ -227,7 +229,7 @@ func processWakelockBusyness(deviceId string, alarm *alarms.DeliverAlarmsLocked,
 		data[alarm].Duration = wakelock.Release.Datetime.Sub(wakelock.Acquire.Datetime).Nanoseconds()
 		return data[alarm]
 	} else {
-		log.Errorf("Did not find context switch info for alarm. appPid=%v", alarm.AppPid)
+		//log.Errorf("Did not find context switch info for alarm. appPid=%v", alarm.AppPid)
 		/*
 			for _, obj := range loglines {
 				logline := obj.(*phonelab.Logline)
