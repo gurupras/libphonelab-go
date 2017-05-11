@@ -27,9 +27,7 @@ func (o *OptimalStoppingTheory) Process(alarm *alarms.DeliverAlarmsLocked, trigg
 			// that was found when we were tracking the
 			// 'best-so-far'
 			if temps[idx] < best {
-				best = temps[idx]
-				// Stop
-				break
+				return temps[idx]
 			}
 		case false:
 			// We're less than 1/e. Track the best-so-far
@@ -38,10 +36,7 @@ func (o *OptimalStoppingTheory) Process(alarm *alarms.DeliverAlarmsLocked, trigg
 			}
 		}
 	}
-	if best == 100000 {
-		best = temps[len(temps)-1]
-	}
-	return best
+	return temps[len(temps)-1]
 }
 
 func (a *OptimalStoppingTheory) Name() string {
