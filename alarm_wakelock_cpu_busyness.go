@@ -179,6 +179,7 @@ func (p *AlarmWakelockCpuProcessor) Process() <-chan interface{} {
 func processWakelockBusyness(deviceId string, alarm *alarms.DeliverAlarmsLocked, wakelock *AlarmWakelockSet, loglines []interface{}) *AlarmBusynessData {
 	data := make(map[*alarms.DeliverAlarmsLocked]*AlarmBusynessData)
 	lastInfo := make(map[*alarms.DeliverAlarmsLocked]time.Time)
+	temps := make([]int, 0)
 
 	acquire := wakelock.Acquire.Payload.(*parsers.ThermaPlanWakelock)
 
@@ -223,10 +224,15 @@ func processWakelockBusyness(deviceId string, alarm *alarms.DeliverAlarmsLocked,
 	for _, obj := range loglines {
 		logline := obj.(*phonelab.Logline)
 		tracker.ApplyLogline(logline)
+		switch t := logline.Payload.(type) {
+		case *phonelab.ThermalTemp:
+			temps = append(temps, t.Temp)
+		}
 	}
 
 	if _, ok := data[alarm]; ok {
 		data[alarm].Duration = wakelock.Release.Datetime.Sub(wakelock.Acquire.Datetime).Nanoseconds()
+		data[alarm].Temps = temps
 		return data[alarm]
 	} else {
 		//log.Errorf("Did not find context switch info for alarm. appPid=%v", alarm.AppPid)
