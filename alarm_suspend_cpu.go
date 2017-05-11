@@ -204,6 +204,10 @@ func processSuspend1(deviceId string, sData *SuspendData, loglines []interface{}
 			data.Periods[cpuStr] = make([]int64, 0)
 			data.Frequency[cpuStr] = make([]int, 0)
 		}
+		if _, ok := cpuTracker.CurrentState[cpu]; !ok {
+			// We don't have data yet for this CPU
+			return
+		}
 		data.Busyness[cpuStr] = append(data.Busyness[cpuStr], ctxSwitchInfo.Busyness())
 		data.Periods[cpuStr] = append(data.Periods[cpuStr], ctxSwitchInfo.TotalTime())
 		data.Frequency[cpuStr] = append(data.Frequency[cpuStr], cpuTracker.CurrentState[cpu].Frequency)
