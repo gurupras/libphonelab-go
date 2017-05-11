@@ -2,19 +2,21 @@ package main
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
 
 	"github.com/alecthomas/kingpin"
 	"github.com/gorilla/mux"
+	"github.com/shaseley/phonelab-go/serialize"
 	log "github.com/sirupsen/logrus"
 )
 
 var (
-	app  = kingpin.New("http-receiver", "HTTP receiver for phonelab-go")
-	port = app.Flag("port", "Port on which to listen").Short('p').Default("31442").Int()
+	app             = kingpin.New("http-receiver", "HTTP receiver for phonelab-go")
+	outdir          = app.Flag("outdir", "Output directory").Short('o').Required().String()
+	port            = app.Flag("port", "Port on which to listen").Short('p').Default("31442").Int()
+	shouldSerialize = app.Flag("serialize", "Serialize data").Short('s').Default("false").Bool()
 )
 
 func handle(w http.ResponseWriter, r *http.Request) {
@@ -31,10 +33,12 @@ func handle(w http.ResponseWriter, r *http.Request) {
 func main() {
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
-	r := mux.NewRouter()
-	r.HandleFunc("/upload/{relpath:[\\S+/]+}", handle)
-	http.Handle("/", r)
+	receiver := serialize.NewHTTPReceiver(*outdir)
+	if *shouldSerialize {
+		receiver.AddHTTPSerializeCallback()
+	}
 
-	addr := fmt.Sprintf(":%v", *port)
-	log.Errorf("%v", http.ListenAndServe(addr, nil))
+	c := make(chan interface{})
+	receiver.RunHTTPReceiver(*port)
+	_ = <-c
 }
