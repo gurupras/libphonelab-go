@@ -1,5 +1,5 @@
 //syntax = "proto3";
-package libphonelab;
+package trackers;
 
 message DistributionMsg {
 	required string DeviceId = 1;

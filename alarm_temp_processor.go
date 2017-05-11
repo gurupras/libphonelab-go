@@ -12,6 +12,7 @@ import (
 	"github.com/fatih/set"
 	"github.com/gurupras/gocommons/gsync"
 	"github.com/gurupras/libphonelab-go/alarms"
+	"github.com/gurupras/libphonelab-go/trackers"
 	"github.com/shaseley/phonelab-go"
 	log "github.com/sirupsen/logrus"
 )
@@ -31,7 +32,7 @@ type AlarmTempProcessor struct {
 	Info   phonelab.PipelineSourceInfo
 }
 
-var distributionMap = make(map[string]*Distribution)
+var distributionMap = make(map[string]*trackers.Distribution)
 var distributionMapLock = sync.Mutex{}
 
 type AlarmTempData struct {
@@ -79,7 +80,7 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 		defer atMaxConcurrentSem.V()
 
 		alarmSet := set.New()
-		var distribution *Distribution
+		var distribution *trackers.Distribution
 
 		inChan := p.Source.Process()
 		for obj := range inChan {
@@ -94,7 +95,7 @@ func (p *AlarmTempProcessor) Process() <-chan interface{} {
 				timestamp := ll.Datetime.UnixNano()
 				if distribution == nil {
 					distributionMapLock.Lock()
-					distributionMap[uid] = NewDistribution(nil, 24*time.Hour)
+					distributionMap[uid] = trackers.NewDistribution(nil, 24*time.Hour)
 					distribution = distributionMap[uid]
 					distributionMapLock.Unlock()
 				}
