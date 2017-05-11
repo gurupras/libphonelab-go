@@ -76,6 +76,7 @@ func (p *ScreenOffCpuProcessor) Process() <-chan interface{} {
 		defer close(outChan)
 
 		data := NewScreenOffCpuData()
+		unknown := NewScreenOffCpuData()
 		current := NewScreenOffCpuData()
 
 		_ = sourceInfo
@@ -109,10 +110,20 @@ func (p *ScreenOffCpuProcessor) Process() <-chan interface{} {
 
 		screenStateTracker := trackers.NewScreenStateTracker(tracker)
 		screenStateTracker.Callback = func(state trackers.ScreenState, logline *phonelab.Logline) {
-			if screenStateTracker.CurrentState == trackers.SCREEN_STATE_OFF && state == trackers.SCREEN_STATE_ON {
+			if state != trackers.SCREEN_STATE_ON {
+				// It's going off..which means it was on till now
+				// Clear out unknown
+				unknown = NewScreenOffCpuData()
+			}
+			if screenStateTracker.CurrentState == trackers.SCREEN_STATE_OFF {
 				// Update data with current and reset current
 				data.Update(current)
 				current = NewScreenOffCpuData()
+			} else {
+				// We didn't know what the state was, but then
+				// it turned on now..so it had to be off
+				data.Update(unknown)
+				unknown = NewScreenOffCpuData()
 			}
 			log.Debugf("Screen State=%v", state)
 		}
@@ -130,10 +141,13 @@ func (p *ScreenOffCpuProcessor) Process() <-chan interface{} {
 			}
 		})
 		cpuTracker.Callback = func(cpu int, lineType trackers.CpuLineType, logline *phonelab.Logline) {
-			if screenStateTracker.CurrentState != trackers.SCREEN_STATE_OFF {
-				// We're only tracking screen state off and unplugged
-				return
+			var updateObj *ScreenOffCpuData
+			if screenStateTracker.CurrentState == trackers.SCREEN_STATE_OFF {
+				updateObj = current
+			} else {
+				updateObj = unknown
 			}
+
 			if chargeStateTracker.CurrentState != trackers.CHARGE_STATE_UNPLUGGED {
 				// We're only tracking when unplugged
 				return
@@ -167,11 +181,11 @@ func (p *ScreenOffCpuProcessor) Process() <-chan interface{} {
 			}
 			cpuStr := fmt.Sprintf("%v", cpu)
 			if _, ok := data.Frequency[cpuStr]; !ok {
-				current.Frequency[cpuStr] = make([]int, 0)
-				current.Duration[cpuStr] = make([]int64, 0)
+				updateObj.Frequency[cpuStr] = make([]int, 0)
+				updateObj.Duration[cpuStr] = make([]int64, 0)
 			}
-			current.Frequency[cpuStr] = append(current.Frequency[cpuStr], curFreq)
-			current.Duration[cpuStr] = append(current.Duration[cpuStr], duration)
+			updateObj.Frequency[cpuStr] = append(updateObj.Frequency[cpuStr], curFreq)
+			updateObj.Duration[cpuStr] = append(updateObj.Duration[cpuStr], duration)
 		}
 
 		inChan := p.Source.Process()
