@@ -1,0 +1,36 @@
+package algorithms
+
+import (
+	"github.com/gurupras/libphonelab-go/alarms"
+	"github.com/gurupras/libphonelab-go/trackers"
+)
+
+type SimpleLinearThreshold struct {
+}
+
+func (s *SimpleLinearThreshold) Process(alarm *alarms.DeliverAlarmsLocked, triggerTemp int32, temps []int32, timestamps []int64, distribution *trackers.Distribution) int32 {
+	totalTime := alarm.WindowLength * 1000000
+	whenNanos := alarm.WhenRtc * 1000000
+
+	for idx := 0; idx < len(timestamps); idx++ {
+		if timestamps[idx] < whenNanos {
+			continue
+		}
+		percentTimeElapsed := float64((timestamps[idx]-(whenNanos))*100) / float64(totalTime)
+		if percentTimeElapsed < 0 {
+			return -1
+		}
+		newThreshold := int(25 + ((percentTimeElapsed * 75.0) / 100.0))
+		if newThreshold > 100 {
+			newThreshold = 100
+		}
+		if temps[idx] <= distribution.NthPercentileTemp(newThreshold) {
+			return temps[idx]
+		}
+	}
+	return temps[len(temps)-1]
+}
+
+func (a *SimpleLinearThreshold) Name() string {
+	return "simple-linear-threshold"
+}
