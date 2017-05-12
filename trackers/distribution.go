@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gurupras/go_cpuprof/post_processing"
+	"github.com/montanaflynn/stats"
 	"github.com/shaseley/phonelab-go"
 )
 
@@ -115,24 +116,12 @@ func (d *Distribution) MeasuredDurationSec() float64 {
 }
 
 func (d *Distribution) NthPercentileTemp(percentile int) int32 {
-	totalPoints := len(d.Temps)
-	nthPercentilePoints := int64(totalPoints / percentile)
-
-	if percentile < 0 {
-		percentile = 0
+	data := make([]float64, len(d.Temps))
+	for idx, t := range d.Temps {
+		data[idx] = float64(t)
 	}
-	if percentile > 100 {
-		percentile = 100
-	}
-
-	counted := int64(0)
-	for k := range d.Distribution {
-		counted += d.Distribution[k]
-		if counted >= nthPercentilePoints {
-			return k
-		}
-	}
-	return -1
+	value, _ := stats.Percentile(data, float64(percentile))
+	return int32(value)
 }
 
 type ComparisonOperator int
