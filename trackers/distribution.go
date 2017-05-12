@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/gurupras/go_cpuprof/post_processing"
-	"github.com/montanaflynn/stats"
 	"github.com/shaseley/phonelab-go"
 )
 
@@ -116,12 +116,26 @@ func (d *Distribution) MeasuredDurationSec() float64 {
 }
 
 func (d *Distribution) NthPercentileTemp(percentile int) int32 {
-	data := make([]float64, len(d.Temps))
-	for idx, t := range d.Temps {
-		data[idx] = float64(t)
+	totalValues := len(d.Temps)
+
+	sortedKeys := make([]int, len(d.Temps))
+	idx := 0
+	for k := range d.Distribution {
+		sortedKeys[idx] = int(k)
+		idx++
 	}
-	value, _ := stats.Percentile(data, float64(percentile))
-	return int32(value)
+	sort.Ints(sortedKeys)
+
+	expectedCount := int64(math.Ceil(float64(totalValues) * (float64(percentile) / 100.0)))
+	count := int64(0)
+	for _, key := range sortedKeys {
+		k32 := int32(key)
+		count += d.Distribution[k32]
+		if count >= expectedCount {
+			return k32
+		}
+	}
+	return int32(sortedKeys[len(sortedKeys)-1])
 }
 
 type ComparisonOperator int
