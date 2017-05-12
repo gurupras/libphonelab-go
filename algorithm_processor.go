@@ -224,14 +224,17 @@ func (c *AlgorithmCollector) OnData(data interface{}, info phonelab.PipelineSour
 			c.Unlock()
 		}
 		dMap := c.deviceDataMap[deviceId]
-		c.Lock()
-		for k, v := range r.Data {
-			if _, ok := dMap[k]; !ok {
-				dMap[k] = make([]int, 0)
+		// Only update if window length is greater than 1hr
+		if time.Duration(r.WindowLength*1000000) > 1*time.Hour {
+			c.Lock()
+			for k, v := range r.Data {
+				if _, ok := dMap[k]; !ok {
+					dMap[k] = make([]int, 0)
+				}
+				dMap[k] = append(dMap[k], v)
 			}
-			dMap[k] = append(dMap[k], v)
+			c.Unlock()
 		}
-		c.Unlock()
 	}()
 }
 
