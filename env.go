@@ -152,6 +152,7 @@ func InitEnv(env *phonelab.Environment) {
 		}
 		c.DefaultCollector = d.(*phonelab.DefaultCollector)
 		c.Semaphore = gsync.NewSem(100)
+		c.deviceDataMap = make(map[string]map[string][]int)
 		return c
 	}
 

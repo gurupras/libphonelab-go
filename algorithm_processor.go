@@ -1,9 +1,7 @@
 package libphonelab
 
 import (
-	"crypto/md5"
 	"fmt"
-	"io"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -198,6 +196,7 @@ type AlgorithmCollector struct {
 	wg sync.WaitGroup
 	*phonelab.DefaultCollector
 	*gsync.Semaphore
+	deviceDataMap map[string]map[string][]int
 }
 
 func (c *AlgorithmCollector) OnData(data interface{}, info phonelab.PipelineSourceInfo) {
@@ -210,17 +209,39 @@ func (c *AlgorithmCollector) OnData(data interface{}, info phonelab.PipelineSour
 		sourceInfo := info.(*phonelab.PhonelabSourceInfo)
 		deviceId := sourceInfo.DeviceId
 
-		h := md5.New()
-		io.WriteString(h, r.dal.Logline.Line)
-		checksum := fmt.Sprintf("%x", h.Sum(nil))
+		/*
+			h := md5.New()
+			io.WriteString(h, r.dal.Logline.Line)
+			checksum := fmt.Sprintf("%x", h.Sum(nil))
 
-		path := filepath.Join(deviceId, "analysis", "algorithms", fmt.Sprintf("%v", checksum))
-		info := &CustomInfo{path, "custom"}
-		c.DefaultCollector.OnData(r, info)
+			path := filepath.Join(deviceId, "analysis", "algorithms", fmt.Sprintf("%v", checksum))
+			info := &CustomInfo{path, "custom"}
+			c.DefaultCollector.OnData(r, info)
+		*/
+		if _, ok := c.deviceDataMap[deviceId]; !ok {
+			c.Lock()
+			c.deviceDataMap[deviceId] = make(map[string][]int)
+			c.Unlock()
+		}
+		dMap := c.deviceDataMap[deviceId]
+		c.Lock()
+		for k, v := range r.Data {
+			if _, ok := dMap[k]; !ok {
+				dMap[k] = make([]int, 0)
+			}
+			dMap[k] = append(dMap[k], v)
+		}
+		c.Unlock()
 	}()
 }
 
 func (c *AlgorithmCollector) Finish() {
 	// Nothing to do here
 	c.wg.Wait()
+
+	for deviceId, data := range c.deviceDataMap {
+		path := filepath.Join(deviceId, "analysis", "algorithm_results")
+		info := &CustomInfo{path, "custom"}
+		c.DefaultCollector.OnData(data, info)
+	}
 }
