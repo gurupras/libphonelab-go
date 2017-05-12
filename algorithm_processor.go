@@ -1,7 +1,9 @@
 package libphonelab
 
 import (
+	"crypto/md5"
 	"fmt"
+	"io"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -63,6 +65,8 @@ func (p *AlgorithmProcessor) Process() <-chan interface{} {
 	atDeviceMapLock.Unlock()
 
 	atMaxConcurrentSem.P()
+	alarmWg := sync.WaitGroup{}
+	maxConcurrentAlarms := gsync.NewSem(100)
 	go func() {
 		defer close(outChan)
 		defer atMaxConcurrentSem.V()
@@ -148,19 +152,38 @@ func (p *AlgorithmProcessor) Process() <-chan interface{} {
 								}
 							}
 							// TODO: Add algorithm analysis for this alarm
-							if len(alarm.Temps) > 0 {
-								algorithmResults := make(map[string]int)
-								for _, obj := range algorithmSet.List() {
-									alg := obj.(algorithms.Algorithm)
-									temp := alg.Process(alarm.DeliverAlarmsLocked, alarm.TriggerTemp, alarm.Temps, alarm.Timestamps, distribution)
-									algorithmResults[alg.Name()] = int(temp)
+							maxConcurrentAlarms.P()
+							alarmWg.Add(1)
+							go func(alarm *AlarmTempData, distribution *trackers.Distribution) {
+								defer maxConcurrentAlarms.V()
+								defer alarmWg.Done()
+								if len(alarm.Temps) > 100 {
+									log.Debugf("Running algorithms")
+									algorithmResults := make(map[string]int)
+									algWg := sync.WaitGroup{}
+									algLock := sync.Mutex{}
+									algWg.Add(algorithmSet.Size())
+									for _, obj := range algorithmSet.List() {
+										alg := obj.(algorithms.Algorithm)
+										go func(alg algorithms.Algorithm) {
+											defer algWg.Done()
+											temp := alg.Process(alarm.DeliverAlarmsLocked, alarm.TriggerTemp, alarm.Temps, alarm.Timestamps, distribution)
+											algLock.Lock()
+											defer algLock.Unlock()
+											algorithmResults[alg.Name()] = int(temp)
+										}(alg)
+									}
+									algWg.Wait()
+									log.Debugf("Shipping out alarm")
+									outChan <- &AlgorithmData{
+										alarm.DeliverAlarmsLocked,
+										alarm.WindowLength,
+										algorithmResults,
+									}
+								} else {
+									log.Warnf("Temps < 100")
 								}
-								outChan <- &AlgorithmData{
-									alarm.DeliverAlarmsLocked,
-									alarm.WindowLength,
-									algorithmResults,
-								}
-							}
+							}(alarm, distribution.Clone())
 						}
 					}(obj)
 				}
@@ -169,11 +192,12 @@ func (p *AlgorithmProcessor) Process() <-chan interface{} {
 				deliverAlarm := ll.Payload.(*alarms.DeliverAlarmsLocked)
 				deliverAlarm.Logline = ll
 
-				if deliverAlarm.WindowLength == 0 {
+				if time.Duration(deliverAlarm.WindowLength)*time.Millisecond < 3*time.Hour {
 					// Nothing to do
 					continue
 				}
 				if distribution != nil && distribution.IsFull() {
+					log.Infof("Found alarm")
 					// Add this alarm to the alarm set
 					alarmTempData := NewAlarmTempData()
 					alarmTempData.DeliverAlarmsLocked = deliverAlarm
@@ -186,6 +210,7 @@ func (p *AlgorithmProcessor) Process() <-chan interface{} {
 		distributionMapLock.Lock()
 		delete(distributionMap, uid)
 		distributionMapLock.Unlock()
+		alarmWg.Wait()
 		log.Infof("%v->%v: %d/%d", deviceId, bootId, atomic.AddUint32(atDeviceMap[deviceId]["finished"].(*uint32), 1), total)
 	}()
 	return outChan
@@ -209,32 +234,27 @@ func (c *AlgorithmCollector) OnData(data interface{}, info phonelab.PipelineSour
 		sourceInfo := info.(*phonelab.PhonelabSourceInfo)
 		deviceId := sourceInfo.DeviceId
 
-		/*
-			h := md5.New()
-			io.WriteString(h, r.dal.Logline.Line)
-			checksum := fmt.Sprintf("%x", h.Sum(nil))
+		h := md5.New()
+		io.WriteString(h, r.dal.Logline.Line)
+		checksum := fmt.Sprintf("%x", h.Sum(nil))
 
-			path := filepath.Join(deviceId, "analysis", "algorithms", fmt.Sprintf("%v", checksum))
-			info := &CustomInfo{path, "custom"}
-			c.DefaultCollector.OnData(r, info)
-		*/
+		path := filepath.Join(deviceId, "analysis", "algorithms", fmt.Sprintf("%v", checksum))
+		info := &CustomInfo{path, "custom"}
+		c.DefaultCollector.OnData(r, info)
 		if _, ok := c.deviceDataMap[deviceId]; !ok {
 			c.Lock()
 			c.deviceDataMap[deviceId] = make(map[string][]int)
 			c.Unlock()
 		}
 		dMap := c.deviceDataMap[deviceId]
-		// Only update if window length is greater than 1hr
-		if time.Duration(r.WindowLength*1000000) > 1*time.Hour {
-			c.Lock()
-			for k, v := range r.Data {
-				if _, ok := dMap[k]; !ok {
-					dMap[k] = make([]int, 0)
-				}
-				dMap[k] = append(dMap[k], v)
+		c.Lock()
+		for k, v := range r.Data {
+			if _, ok := dMap[k]; !ok {
+				dMap[k] = make([]int, 0)
 			}
-			c.Unlock()
+			dMap[k] = append(dMap[k], v)
 		}
+		c.Unlock()
 	}()
 }
 
