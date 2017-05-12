@@ -46,8 +46,8 @@ func (s *SimpleLinearThreshold) Process(alarm *alarms.DeliverAlarmsLocked, trigg
 				checksum := fmt.Sprintf("%x", h.Sum(nil))
 
 			*/
-			checksum := ""
-			log.Errorf("Timestamp going backwards? %v: timestamps[%d] = %v < %v", checksum, idx, timestamps[idx], whenNanos)
+			//checksum := ""
+			//log.Errorf("Timestamp going backwards? %v: timestamps[%d] = %v < %v", checksum, idx, timestamps[idx], whenNanos)
 			_ = log.GetLevel()
 			continue
 		}
