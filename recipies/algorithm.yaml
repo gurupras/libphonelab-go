@@ -13,28 +13,28 @@ source:
   #sources: ["/processed/cb63cb9bb9ad1ea9fcfab53403820c7c084621ab/info.json"]
   sources:
     - '/ubicomp17/processed/84fd059afbcdff5029f8fc710580dd5d8a650346/info.json'
-#    - '/ubicomp17/processed/db9eec0bc44b40234ebd07eda472eebad0a4e162/info.json'
-#    - '/ubicomp17/processed/8c4b69678a7cbdc557d4dd96d3e00b98c8bde5ad/info.json'
-#    - '/ubicomp17/processed/1111fce9d1c895c2bd62fd239cefd3b6b9e331ab/info.json'
-#    - '/ubicomp17/processed/b2f08e0c53e114f5807defb800b4c9df3098a716/info.json'
-#    - '/ubicomp17/processed/0894101efb1fd6a2b51e984b22d90efc81a89a20/info.json'
-#    - '/ubicomp17/processed/2e26b6d10e527ea93ee94ad093990725f9f690e6/info.json'
-#    - '/ubicomp17/processed/ee3bf6daf3c1ff8efba32f162ebd9fb65e0253d6/info.json'
-#    - '/ubicomp17/processed/ec582593a58387c173a1f2a8718434c0336d7ef3/info.json'
-#    - '/ubicomp17/processed/9ac0694f3b76efa6801131f19a749fbffa473c67/info.json'
-#    - '/ubicomp17/processed/8ec3ca340e00a034b14aecded7e15ae4f4685209/info.json'
-#    - '/ubicomp17/processed/29cb766c0185838be5bcd91d80a7455c2505d848/info.json'
-#    - '/ubicomp17/processed/eeaba1715a642bf0443cf571871de131871a6173/info.json'
-#    - '/ubicomp17/processed/9aa33cc6b9e1d870795286135b1a77453ff1a6b7/info.json'
-#    - '/ubicomp17/processed/c0a9d768595fc0d4889030fa02189c046d49aadc/info.json'
-#    - '/ubicomp17/processed/29c993dfcaa55a18acde24f59fdaf439600fcce0/info.json'
-#    - '/ubicomp17/processed/c8559b52cdcba4644bb686b1579d765da56482e3/info.json'
-#    - '/ubicomp17/processed/ac99683a2186c2edd3224cb5e2b08ec06360f75e/info.json'
-#    - '/ubicomp17/processed/fb7b47fad00c9ed7196c34d9a940e8cd21fd3ad9/info.json'
-#    - '/ubicomp17/processed/442efeb4330b8f5ccf20620e3e537e7ba579ffab/info.json'
+    - '/ubicomp17/processed/db9eec0bc44b40234ebd07eda472eebad0a4e162/info.json'
+    - '/ubicomp17/processed/8c4b69678a7cbdc557d4dd96d3e00b98c8bde5ad/info.json'
+    - '/ubicomp17/processed/1111fce9d1c895c2bd62fd239cefd3b6b9e331ab/info.json'
+    - '/ubicomp17/processed/b2f08e0c53e114f5807defb800b4c9df3098a716/info.json'
+    - '/ubicomp17/processed/0894101efb1fd6a2b51e984b22d90efc81a89a20/info.json'
+    - '/ubicomp17/processed/2e26b6d10e527ea93ee94ad093990725f9f690e6/info.json'
+    - '/ubicomp17/processed/ee3bf6daf3c1ff8efba32f162ebd9fb65e0253d6/info.json'
+    - '/ubicomp17/processed/ec582593a58387c173a1f2a8718434c0336d7ef3/info.json'
+    - '/ubicomp17/processed/9ac0694f3b76efa6801131f19a749fbffa473c67/info.json'
+    - '/ubicomp17/processed/8ec3ca340e00a034b14aecded7e15ae4f4685209/info.json'
+    - '/ubicomp17/processed/29cb766c0185838be5bcd91d80a7455c2505d848/info.json'
+    - '/ubicomp17/processed/eeaba1715a642bf0443cf571871de131871a6173/info.json'
+    - '/ubicomp17/processed/9aa33cc6b9e1d870795286135b1a77453ff1a6b7/info.json'
+    - '/ubicomp17/processed/c0a9d768595fc0d4889030fa02189c046d49aadc/info.json'
+    - '/ubicomp17/processed/29c993dfcaa55a18acde24f59fdaf439600fcce0/info.json'
+    - '/ubicomp17/processed/c8559b52cdcba4644bb686b1579d765da56482e3/info.json'
+    - '/ubicomp17/processed/ac99683a2186c2edd3224cb5e2b08ec06360f75e/info.json'
+    - '/ubicomp17/processed/fb7b47fad00c9ed7196c34d9a940e8cd21fd3ad9/info.json'
+    - '/ubicomp17/processed/442efeb4330b8f5ccf20620e3e537e7ba579ffab/info.json'
   args:
     hdfs_addr: dirtydeeds.cse.buffalo.edu:9000
-    daterange: 20170428-20170530
+    daterange: 20170210-20170530
 processors:
   - name: algorithm_processor
     has_logstream: true
