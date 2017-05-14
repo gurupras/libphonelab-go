@@ -8,6 +8,7 @@ import (
 
 	"github.com/fatih/set"
 	"github.com/gurupras/gocommons/gsync"
+	"github.com/gurupras/libphonelab-go/alarms"
 	"github.com/gurupras/libphonelab-go/trackers"
 	"github.com/shaseley/phonelab-go"
 	log "github.com/sirupsen/logrus"
@@ -124,7 +125,9 @@ func (p *SuspendCpuProcessor) Process() <-chan interface{} {
 				startIdx, _ := loglineDistribution.FindIdxByTimeBinarySearch(sData.lastSuspendExit.Datetime, 10*time.Second)
 				if startIdx != -1 {
 					bd := processSuspend1(deviceId, sData, loglineDistribution.Data[startIdx:])
-					data.Update(bd)
+					if bd != nil {
+						data.Update(bd)
+					}
 				} else {
 					log.Warnf("Did not find logline near suspend exit")
 				}
@@ -213,14 +216,22 @@ func processSuspend1(deviceId string, sData *SuspendData, loglines []interface{}
 		data.Frequency[cpuStr] = append(data.Frequency[cpuStr], cpuTracker.CurrentState[cpu].Frequency)
 	}
 
+	hasAlarm := false
 	var lastLogline *phonelab.Logline
 	for _, obj := range loglines {
 		logline := obj.(*phonelab.Logline)
+		switch logline.Payload.(type) {
+		case *alarms.DeliverAlarmsLocked:
+			hasAlarm = true
+		}
 		lastLogline = logline
 		tracker.ApplyLogline(logline)
 	}
 
 	data.Duration = loglines[0].(*phonelab.Logline).Datetime.Sub(lastLogline.Datetime).Nanoseconds()
+	if !hasAlarm {
+		return nil
+	}
 	return data
 }
 
