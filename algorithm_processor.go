@@ -51,7 +51,7 @@ func (p *AlgorithmProcessor) Process() <-chan interface{} {
 
 	algorithmSet := set.NewNonTS()
 	algorithmSet.Add(algorithms.NewSimpleLinearThreshold(25.0))
-	algorithmSet.Add(algorithms.NewSimpleLinearThreshold(10.0))
+	//algorithmSet.Add(algorithms.NewSimpleLinearThreshold(10.0))
 	algorithmSet.Add(&algorithms.Oracle{})
 	algorithmSet.Add(&algorithms.OptimalStoppingTheory{})
 	algorithmSet.Add(&algorithms.OptimalStoppingTheoryCardinal{})
