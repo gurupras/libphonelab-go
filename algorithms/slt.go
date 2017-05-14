@@ -1,6 +1,7 @@
 package algorithms
 
 import (
+	"fmt"
 	"math"
 	"sort"
 
@@ -9,10 +10,19 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type SimpleLinearThreshold struct {
+type simpleLinearThreshold struct {
+	BaseThreshold float64
 }
 
-func (s *SimpleLinearThreshold) Process(alarm *alarms.DeliverAlarmsLocked, triggerTemp int32, temps []int32, timestamps []int64, distribution *trackers.Distribution) int32 {
+func NewSimpleLinearThreshold(threshold float64) Algorithm {
+	if threshold <= 0 {
+		log.Errorf("Bad threshold value.")
+		return nil
+	}
+	return &simpleLinearThreshold{threshold}
+}
+
+func (s *simpleLinearThreshold) Process(alarm *alarms.DeliverAlarmsLocked, triggerTemp int32, temps []int32, timestamps []int64, distribution *trackers.Distribution) int32 {
 	totalTime := alarm.WindowLength * 1000000
 	whenNanos := alarm.WhenRtc * 1000000
 
@@ -52,7 +62,7 @@ func (s *SimpleLinearThreshold) Process(alarm *alarms.DeliverAlarmsLocked, trigg
 			continue
 		}
 		percentTimeElapsed := float64((timestamps[idx]-(whenNanos))*100) / float64(totalTime)
-		newThreshold := int(25 + ((percentTimeElapsed * 75.0) / 100.0))
+		newThreshold := int(s.BaseThreshold + ((percentTimeElapsed * (100.0 - s.BaseThreshold)) / 100.0))
 		if newThreshold > 100 {
 			newThreshold = 100
 		}
@@ -65,6 +75,6 @@ func (s *SimpleLinearThreshold) Process(alarm *alarms.DeliverAlarmsLocked, trigg
 	return temps[len(temps)-1]
 }
 
-func (a *SimpleLinearThreshold) Name() string {
-	return "simple-linear-threshold"
+func (a *simpleLinearThreshold) Name() string {
+	return fmt.Sprintf("simple-linear-threshold-%v", a.BaseThreshold)
 }

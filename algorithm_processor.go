@@ -50,9 +50,11 @@ func (p *AlgorithmProcessor) Process() <-chan interface{} {
 	total := len(sourceInfo.BootIds())
 
 	algorithmSet := set.NewNonTS()
-	algorithmSet.Add(&algorithms.SimpleLinearThreshold{})
+	algorithmSet.Add(algorithms.NewSimpleLinearThreshold(25.0))
+	algorithmSet.Add(algorithms.NewSimpleLinearThreshold(10.0))
 	algorithmSet.Add(&algorithms.Oracle{})
 	algorithmSet.Add(&algorithms.OptimalStoppingTheory{})
+	algorithmSet.Add(&algorithms.OptimalStoppingTheoryCardinal{})
 	algorithmSet.Add(&algorithms.Android{})
 
 	atDeviceMapLock.Lock()
@@ -192,7 +194,7 @@ func (p *AlgorithmProcessor) Process() <-chan interface{} {
 				deliverAlarm := ll.Payload.(*alarms.DeliverAlarmsLocked)
 				deliverAlarm.Logline = ll
 
-				if time.Duration(deliverAlarm.WindowLength)*time.Millisecond < 3*time.Hour {
+				if time.Duration(deliverAlarm.WindowLength)*time.Millisecond < 1*time.Hour {
 					// Nothing to do
 					continue
 				}
