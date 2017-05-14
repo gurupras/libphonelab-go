@@ -155,6 +155,17 @@ func InitEnv(env *phonelab.Environment) {
 		c.deviceDataMap = make(map[string]map[string][]int)
 		return c
 	}
+	env.DataCollectors["sleep_duration_analysis_collector"] = func(kwargs map[string]interface{}) phonelab.DataCollector {
+		c := &SleepDurationAnalysisCollector{}
+		d, err := phonelab.NewDefaultCollector(kwargs)
+		if err != nil {
+			panic(fmt.Sprintf("%v", err))
+		}
+		c.DefaultCollector = d.(*phonelab.DefaultCollector)
+		c.Semaphore = gsync.NewSem(100)
+		c.deviceDataMap = make(map[string]map[string][]int64)
+		return c
+	}
 
 	env.Processors["tag_count_processor"] = &TagCountProcGenerator{}
 	env.Processors["alarm_processor"] = &AlarmProcGenerator{}
@@ -171,6 +182,7 @@ func InitEnv(env *phonelab.Environment) {
 	env.Processors["alarm_window_lengths_processor"] = &AlarmWindowLengthsProcGenerator{}
 	env.Processors["missing_loglines_processor"] = &MissingLoglinesProcGenerator{}
 	env.Processors["algorithm_processor"] = &AlgorithmProcGenerator{}
+	env.Processors["sleep_duration_analysis_processor"] = &SleepDurationAnalysisProcGenerator{}
 
 	// Parsers
 	env.RegisterParserGenerator("ThermaPlan->AlarmManagerService", alarms.NewDeliverAlarmsLockedParser)
