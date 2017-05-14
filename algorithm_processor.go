@@ -79,7 +79,7 @@ func (p *AlgorithmProcessor) Process() <-chan interface{} {
 		inChan := p.Source.Process()
 		for obj := range inChan {
 			ll, ok := obj.(*phonelab.Logline)
-			if !ok {
+			if !ok || ll == nil {
 				continue
 			}
 			switch ll.Payload.(type) {
