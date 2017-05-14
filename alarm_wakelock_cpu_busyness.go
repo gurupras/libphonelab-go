@@ -45,18 +45,22 @@ func (p *AlarmWakelockCpuProcessor) Process() <-chan interface{} {
 	deviceId := sourceInfo.DeviceId
 
 	pidAlarmMap := make(map[int]set.Interface)
+	pidWakelockCount := make(map[int]int)
+	pidWakelockMap := make(map[int]*AlarmWakelockSet)
 	lockAddrSet := set.NewNonTS()
 	wakelockMap := make(map[int64]*AlarmWakelockSet)
 	processSet := set.NewNonTS()
 
 	clearData := func() {
 		pidAlarmMap = make(map[int]set.Interface)
+		pidWakelockCount = make(map[int]int)
+		pidWakelockMap = make(map[int]*AlarmWakelockSet)
 		lockAddrSet = set.NewNonTS()
 		wakelockMap = make(map[int64]*AlarmWakelockSet)
 		processSet = set.NewNonTS()
 	}
 
-	loglineDistribution := NewAbstractDistribution(nil, 4*time.Hour)
+	loglineDistribution := NewAbstractDistribution(nil, 6*time.Hour)
 
 	tracker := trackers.New()
 	missingLoglinesTracker := trackers.NewMissingLoglinesTracker(tracker)
@@ -106,11 +110,12 @@ func (p *AlarmWakelockCpuProcessor) Process() <-chan interface{} {
 			for _, obj := range processSet.List() {
 				entry := obj.(*AlarmWakelockSet)
 				releaseDatetime := entry.Release.Datetime
-				if ll.Datetime.Sub(releaseDatetime).Seconds() > 5 {
+				if ll.Datetime.Sub(releaseDatetime).Seconds() > 10 {
 					pid := (entry.Acquire.Payload.(*parsers.ThermaPlanWakelock)).Pid
 
 					// Remove one alarm from the set
 					if pidAlarmMap[pid] == nil || pidAlarmMap[pid].Size() == 0 {
+						log.Warnf("Wakelock release but no alarm")
 						processSet.Remove(obj)
 						continue
 					}
@@ -160,6 +165,11 @@ func (p *AlarmWakelockCpuProcessor) Process() <-chan interface{} {
 					if pidAlarmMap[pid] != nil && pidAlarmMap[pid].Size() > 0 {
 						lockAddrSet.Add(t.Lock)
 						wakelockMap[t.Lock] = &AlarmWakelockSet{ll, nil}
+						if pidWakelockCount[pid] == 0 {
+							pidWakelockMap[pid] = &AlarmWakelockSet{ll, nil}
+						}
+						pidWakelockCount[pid]++
+
 					}
 				case parsers.WAKELOCK_RELEASE:
 					// Find loglines from acquire time to release time and track busyness, frequency, periods
@@ -168,12 +178,23 @@ func (p *AlarmWakelockCpuProcessor) Process() <-chan interface{} {
 					}
 					lockAddrSet.Remove(t.Lock)
 					wakelockMap[t.Lock].Release = ll
-
-					processSet.Add(wakelockMap[t.Lock])
+					pid := wakelockMap[t.Lock].Acquire.Payload.(*parsers.ThermaPlanWakelock).Pid
+					if pidWakelockCount[pid] > 0 {
+						pidWakelockCount[pid]--
+					}
+					if pidWakelockCount[pid] == 0 && pidWakelockMap[pid] != nil {
+						pidWakelockMap[pid].Release = ll
+						processSet.Add(pidWakelockMap[pid])
+						delete(pidWakelockMap, pid)
+					}
 					// Clear stuff up
 					delete(wakelockMap, t.Lock)
 				}
 			}
+		}
+		log.Errorf("Unused alarms")
+		for k, v := range pidAlarmMap {
+			log.Errorf("%v: %v", k, v.Size())
 		}
 	}()
 	return outChan
@@ -279,7 +300,7 @@ func (c *AlarmWakelockCpuCollector) OnData(data interface{}, info phonelab.Pipel
 			c.durations = make([]int64, 0)
 		}
 		c.durations = append(c.durations, r.Duration)
-		//log.Infof("Mean duration: %2.2fs", (__avg(c.durations) / 1e9))
+		log.Infof("Mean duration: %2.2fs", (__avg(c.durations) / 1e9))
 		c.Unlock()
 		sourceInfo := info.(*phonelab.PhonelabSourceInfo)
 		deviceId := sourceInfo.DeviceId
